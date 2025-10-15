@@ -7,32 +7,118 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/**
+ * ===============================
+ * User Tables
+ * ===================================
+ */
 model User {
-  id          String       @id @default(uuid()) @map("_id")
-  name        String
-  email       String       @unique
-  password    String
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  medications Medication[]
+  id               String            @id @default(uuid()) @map("_id")
+  name             String
+  email            String            @unique
+  password         String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  medications      Medication[]
+  timeZone         String            @default("America/Sao_Paulo")
+  reminderSettings ReminderSettings?
+}
+
+model ReminderSettings {
+  id              String   @id @default(uuid()) @map("_id")
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  enablePush      Boolean  @default(true)
+  enableEmail     Boolean  @default(false)
+  reminderBefore  Int      @default(15)
+  quietHoursStart String?
+  quietHoursEnd   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/**
+ * ===============================
+ * Medication Tables
+ * ===================================
+ */
+model Medication {
+  id            String    @id @default(uuid()) @map("_id")
+  name          String
+  dosage        String
+  frequency     Frequency
+  expiresAt     DateTime
+  stock         Int
+  notes         String?
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  startTime     String    @default("08:00")
+  intervalHours Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  schedules MedicationSchedule[]
+  reminders MedicationReminder[]
+  history   MedicationHistory[]
 }
 
 enum Frequency {
-  DAILY
+  ONE_TIME
+  TWICE_A_DAY
+  THREE_TIMES_A_DAY
+  FOUR_TIMES_A_DAY
+  EVERY_OTHER_DAY
   WEEKLY
   MONTHLY
+  AS_NEEDED
+  CUSTOM
 }
 
-model Medication {
-  id        String   @id @default(uuid()) @map("_id")
-  name      String
-  dosage    String
-  frequency Frequency
-  expiresAt DateTime
-  stock     Int
-  notes     String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model MedicationSchedule {
+  id           String     @id @default(uuid()) @map("_id")
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id])
+  time         String
+  daysOfWeek   String[]
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model MedicationReminder {
+  id           String         @id @default(uuid()) @map("_id")
+  medicationId String
+  medication   Medication     @relation(fields: [medicationId], references: [id])
+  scheduledAt  DateTime
+  takenAt      DateTime?
+  status       ReminderStatus @default(PENDING)
+  notes        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+enum ReminderStatus {
+  PENDING
+  TAKEN
+  SKIPPED
+  MISSED
+}
+
+model MedicationHistory {
+  id           String        @id @default(uuid()) @map("_id")
+  medicationId String
+  medication   Medication    @relation(fields: [medicationId], references: [id])
+  action       HistoryAction
+  quantity     Int?
+  notes        String?
+  createdAt    DateTime      @default(now())
+}
+
+enum HistoryAction {
+  TAKEN
+  SKIPPED
+  MISSED
+  EXPIRED
+  RESTOCKED
+  DISCARDED
 }
