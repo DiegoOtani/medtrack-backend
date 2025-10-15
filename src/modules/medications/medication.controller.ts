@@ -1,22 +1,18 @@
-import {
-  Request,
-  Response,
-  NextFunction,
-  RequestHandler,
-} from "express";
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import {
   createMedication,
   updateMedication,
   getMedications,
   getMedicationsById,
   deleteMedication,
-} from "./medication.service";
+} from './medication.service';
+import { createMedicationSchedules } from '../schedules/schedules.service';
 import {
   medicationQuerySchema,
   medicationSchema,
   partialMedicationSchema,
-} from "./medication.schemas";
-import { ZodError } from "zod";
+} from './medication.schemas';
+import { ZodError } from 'zod';
 
 /**
  * Handles the request to create a new medication for a specific user.
@@ -33,8 +29,8 @@ export const createMedicationHandler: RequestHandler = async (
 ) => {
   try {
     const userId = req.user?.id;
-    const mockUserId = "550e8400-e29b-41d4-a716-446655440000";
-    const data = medicationSchema.parse({...req.body, userId: mockUserId});
+    const mockUserId = '550e8400-e29b-41d4-a716-446655440000';
+    const data = medicationSchema.parse({ ...req.body, userId: mockUserId });
 
     // if (!userId) {
     //   return res.status(401).json({ error: "Usuário não autenticado" });
@@ -42,17 +38,24 @@ export const createMedicationHandler: RequestHandler = async (
 
     // Cria o medicamento associando ao userId
     const medication = await createMedication({ ...data, userId: mockUserId });
+    const schedules = await createMedicationSchedules(
+      medication.id,
+      medication.frequency,
+      medication.startTime,
+      medication.intervalHours
+    );
 
     res.status(201).json({
-      message: "Medicamento criado com sucesso",
+      message: 'Medicamento criado com sucesso',
       medication,
+      schedules,
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
       res.status(400).json({ error: error.errors[0].message });
     }
     res.status(400).json({
-      error: error.errors || error.message || "Erro ao criar medicamento",
+      error: error.errors || error.message || 'Erro ao criar medicamento',
     });
   }
 };
@@ -79,7 +82,7 @@ export const createMedicationHandler: RequestHandler = async (
 export const getMedicationsHandler: RequestHandler = async (
   req: Request,
   res: Response,
-  _next: NextFunction,
+  _next: NextFunction
 ) => {
   try {
     const query = medicationQuerySchema.parse(req.query);
@@ -90,7 +93,7 @@ export const getMedicationsHandler: RequestHandler = async (
       res.status(400).json({ error: error.errors[0].message });
     }
     res.status(500).json({
-      error: error.message || "Erro ao buscar medicamentos",
+      error: error.message || 'Erro ao buscar medicamentos',
     });
   }
 };
@@ -109,20 +112,20 @@ export const getMedicationsHandler: RequestHandler = async (
 export const getMedicationByIdHandler: RequestHandler = async (
   req: Request,
   res: Response,
-  _next: NextFunction,
+  _next: NextFunction
 ) => {
   try {
     const { id } = req.params;
     const medication = await getMedicationsById(id);
 
     if (!medication) {
-      return res.status(404).json({ error: "Medicamento não encontrado" });
+      return res.status(404).json({ error: 'Medicamento não encontrado' });
     }
 
     res.json(medication);
   } catch (error: any) {
     res.status(500).json({
-      error: error.message || "Erro ao buscar medicamento",
+      error: error.message || 'Erro ao buscar medicamento',
     });
   }
 };
@@ -143,7 +146,7 @@ export const getMedicationByIdHandler: RequestHandler = async (
 export const updateMedicationHandler: RequestHandler = async (
   req: Request,
   res: Response,
-  _next: NextFunction,
+  _next: NextFunction
 ) => {
   try {
     const { id } = req.params;
@@ -151,7 +154,7 @@ export const updateMedicationHandler: RequestHandler = async (
 
     const medication = await updateMedication(id, data);
     res.json({
-      message: "Medicamento atualizado com sucesso",
+      message: 'Medicamento atualizado com sucesso',
       medication,
     });
   } catch (error: any) {
@@ -159,7 +162,7 @@ export const updateMedicationHandler: RequestHandler = async (
       res.status(400).json({ error: error.errors[0].message });
     }
     res.status(400).json({
-      error: error.errors || error.message || "Erro ao atualizar medicamento",
+      error: error.errors || error.message || 'Erro ao atualizar medicamento',
     });
   }
 };
@@ -177,15 +180,15 @@ export const updateMedicationHandler: RequestHandler = async (
 export const deleteMedicationHandler: RequestHandler = async (
   req: Request,
   res: Response,
-  _next: NextFunction,
+  _next: NextFunction
 ) => {
   try {
     const { id } = req.params;
     await deleteMedication(id);
-    res.json({ message: "Medicamento deletado com sucesso" });
+    res.json({ message: 'Medicamento deletado com sucesso' });
   } catch (error: any) {
     res.status(400).json({
-      error: error.message || "Erro ao deletar medicamento",
+      error: error.message || 'Erro ao deletar medicamento',
     });
   }
 };
