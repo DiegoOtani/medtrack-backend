@@ -1,15 +1,30 @@
-import z from "zod";
+import z from 'zod';
 
-export const frequencyEnum = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
+export const frequencyEnum = z.enum([
+  'ONE_TIME',
+  'TWICE_A_DAY',
+  'THREE_TIMES_A_DAY',
+  'FOUR_TIMES_A_DAY',
+  'EVERY_OTHER_DAY',
+  'WEEKLY',
+  'MONTHLY',
+  'AS_NEEDED',
+  'CUSTOM',
+]);
 
 export const medicationSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  dosage: z.string().min(1, "Dosage is required"),
+  name: z.string().min(1, 'Nome do medicamento é obrigatório'),
+  dosage: z.string().min(1, 'Dosagem do medicamento é obrigatório'),
   frequency: frequencyEnum,
   expiresAt: z.coerce.date(),
-  stock: z.number().min(0, "Stock must be at least 0"),
+  stock: z.number().min(0, 'Estoque do medicamento deve ser pelo menos 0'),
   notes: z.string().optional(),
-  userId: z.string().uuid("Invalid userId"),
+  startTime: z.string().optional(),
+  intervalHours: z
+    .number()
+    .min(0, 'Intervalo de horas deve ser pelo menos 0')
+    .optional(),
+  userId: z.string().uuid('ID do usuário inválido'),
 });
 
 export const partialMedicationSchema = medicationSchema.partial();
