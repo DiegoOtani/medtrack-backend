@@ -1,6 +1,10 @@
-import { Frequency } from '@prisma/client';
+import { Frequency, Prisma } from '@prisma/client';
 import scheduleHandlers from './handler';
 import prisma from '../../shared/lib/prisma';
+import {
+  CreateCustomScheduleInput,
+  UpdateScheduleInput,
+} from './schedules.schemas';
 
 /**
  * Creates the schedules for a medication
@@ -18,8 +22,9 @@ export const createMedicationSchedules = async (
 ) => {
   const schedules = scheduleHandlers[frequency](startTime, intervalHours);
 
-  if (schedules.length === 0)
+  if (schedules.length === 0) {
     return { count: 0, message: 'Nenhum agendamento criado' };
+  }
 
   const createdSchedules = await prisma.medicationSchedule.createMany({
     data: schedules.map((schedule) => ({
@@ -34,4 +39,257 @@ export const createMedicationSchedules = async (
   }
 
   return createdSchedules;
+};
+
+/**
+ * Gets all schedules for a medication
+ */
+export const getSchedulesByMedication = async (
+  medicationId: string,
+  isActive?: boolean
+) => {
+  const where: Prisma.MedicationScheduleWhereInput = {
+    medicationId,
+  };
+
+  if (isActive !== undefined) {
+    where.isActive = isActive;
+  }
+
+  const schedules = await prisma.medicationSchedule.findMany({
+    where,
+    include: {
+      medication: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+        },
+      },
+    },
+    orderBy: {
+      time: 'asc',
+    },
+  });
+
+  return schedules;
+};
+
+/**
+ * Gets all active schedules for a user's medications
+ */
+export const getSchedulesByUser = async (
+  userId: string,
+  isActive?: boolean
+) => {
+  const where: Prisma.MedicationScheduleWhereInput = {
+    medication: {
+      userId,
+    },
+  };
+
+  if (isActive !== undefined) {
+    where.isActive = isActive;
+  }
+
+  const schedules = await prisma.medicationSchedule.findMany({
+    where,
+    include: {
+      medication: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+          frequency: true,
+        },
+      },
+    },
+    orderBy: [
+      {
+        medication: {
+          name: 'asc',
+        },
+      },
+      {
+        time: 'asc',
+      },
+    ],
+  });
+
+  return schedules;
+};
+
+/**
+ * Gets a single schedule by ID
+ */
+export const getScheduleById = async (id: string) => {
+  const schedule = await prisma.medicationSchedule.findUnique({
+    where: { id },
+    include: {
+      medication: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+        },
+      },
+    },
+  });
+
+  if (!schedule) {
+    throw new Error('Agendamento não encontrado');
+  }
+
+  return schedule;
+};
+
+/**
+ * Creates a custom schedule for a medication
+ */
+export const createCustomSchedule = async (data: CreateCustomScheduleInput) => {
+  const { medicationId, time, daysOfWeek } = data;
+
+  // Verify medication exists
+  const medication = await prisma.medication.findUnique({
+    where: { id: medicationId },
+  });
+
+  if (!medication) {
+    throw new Error('Medicamento não encontrado');
+  }
+
+  const schedule = await prisma.medicationSchedule.create({
+    data: {
+      medicationId,
+      time,
+      daysOfWeek,
+    },
+    include: {
+      medication: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+        },
+      },
+    },
+  });
+
+  return schedule;
+};
+
+/**
+ * Updates a schedule
+ */
+export const updateSchedule = async (
+  id: string,
+  data: UpdateScheduleInput['body']
+) => {
+  const schedule = await prisma.medicationSchedule.findUnique({
+    where: { id },
+  });
+
+  if (!schedule) {
+    throw new Error('Agendamento não encontrado');
+  }
+
+  const updatedSchedule = await prisma.medicationSchedule.update({
+    where: { id },
+    data,
+    include: {
+      medication: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+        },
+      },
+    },
+  });
+
+  return updatedSchedule;
+};
+
+/**
+ * Toggles a schedule's active status
+ */
+export const toggleSchedule = async (id: string) => {
+  const schedule = await prisma.medicationSchedule.findUnique({
+    where: { id },
+  });
+
+  if (!schedule) {
+    throw new Error('Agendamento não encontrado');
+  }
+
+  const updatedSchedule = await prisma.medicationSchedule.update({
+    where: { id },
+    data: {
+      isActive: !schedule.isActive,
+    },
+    include: {
+      medication: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+        },
+      },
+    },
+  });
+
+  return updatedSchedule;
+};
+
+/**
+ * Deletes a schedule
+ */
+export const deleteSchedule = async (id: string) => {
+  const schedule = await prisma.medicationSchedule.findUnique({
+    where: { id },
+  });
+
+  if (!schedule) {
+    throw new Error('Agendamento não encontrado');
+  }
+
+  await prisma.medicationSchedule.delete({
+    where: { id },
+  });
+
+  return { message: 'Agendamento excluído com sucesso' };
+};
+
+/**
+ * Deletes all schedules for a medication
+ */
+export const deleteSchedulesByMedication = async (medicationId: string) => {
+  const result = await prisma.medicationSchedule.deleteMany({
+    where: { medicationId },
+  });
+
+  return result;
+};
+
+/**
+ * Recreates schedules for a medication (useful when changing frequency)
+ */
+export const recreateSchedules = async (
+  medicationId: string,
+  frequency: Frequency,
+  startTime?: string,
+  intervalHours?: number | null
+) => {
+  // Delete existing schedules
+  await deleteSchedulesByMedication(medicationId);
+
+  // Create new schedules
+  const schedules = await createMedicationSchedules(
+    medicationId,
+    frequency,
+    startTime,
+    intervalHours
+  );
+
+  return schedules;
 };
