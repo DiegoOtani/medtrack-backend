@@ -58,7 +58,6 @@ model Medication {
   updatedAt     DateTime  @updatedAt
 
   schedules MedicationSchedule[]
-  reminders MedicationReminder[]
   history   MedicationHistory[]
 }
 
@@ -85,29 +84,12 @@ model MedicationSchedule {
   updatedAt    DateTime   @updatedAt
 }
 
-model MedicationReminder {
-  id           String         @id @default(uuid()) @map("_id")
-  medicationId String
-  medication   Medication     @relation(fields: [medicationId], references: [id])
-  scheduledAt  DateTime
-  takenAt      DateTime?
-  status       ReminderStatus @default(PENDING)
-  notes        String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-}
-
-enum ReminderStatus {
-  PENDING
-  TAKEN
-  SKIPPED
-  MISSED
-}
-
 model MedicationHistory {
   id           String        @id @default(uuid()) @map("_id")
   medicationId String
   medication   Medication    @relation(fields: [medicationId], references: [id])
+  scheduleId   String?
+  scheduledFor DateTime?
   action       HistoryAction
   quantity     Int?
   notes        String?
