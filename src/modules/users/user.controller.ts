@@ -8,6 +8,120 @@ import * as userService from "./user.service";
 import { UserSchema, UserQuery, LoginSchema } from "./user.schema";
 import { ZodError } from "zod";
 
+
+/**
+ * @openapi
+ * /api/users:
+ *   get:
+ *     tags:
+ *       - Users
+ *     summary: Lista paginada de usuários com filtros opcionais
+ *     description: |
+ *       Retorna uma lista paginada de usuários com suporte a filtros por nome e email.
+ *       Permite ordenação por nome, email ou data de criação em ordem crescente ou decrescente.
+ *       **Requer autenticação**: Este endpoint requer um token JWT válido no header Authorization.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *           description: Número da página para paginação
+ *           example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *           description: Quantidade de itens por página
+ *           example: 10
+ *       - in: query
+ *         name: name
+ *         schema:
+ *           type: string
+ *           description: Filtrar usuários por nome (case insensitive, busca parcial)
+ *           example: "João"
+ *       - in: query
+ *         name: email
+ *         schema:
+ *           type: string
+ *           description: Filtrar usuários por email (case insensitive, busca parcial)
+ *           example: "joao@email.com"
+ *       - in: query
+ *         name: orderBy
+ *         schema:
+ *           type: string
+ *           enum: [name, email, createdAt]
+ *           default: createdAt
+ *           description: Campo para ordenação dos resultados
+ *           example: "name"
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: asc
+ *           description: Ordem de classificação (ascendente ou descendente)
+ *           example: "asc"
+ *     responses:
+ *       200:
+ *         description: Lista de usuários retornada com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserPaginatedResponse'
+ *             example:
+ *               total: 25
+ *               page: 1
+ *               limit: 10
+ *               items:
+ *                 - id: "550e8400-e29b-41d4-a716-446655440000"
+ *                   name: "João Silva"
+ *                   email: "joao.silva@email.com"
+ *                   createdAt: "2024-01-15T10:30:00.000Z"
+ *                   updatedAt: "2024-01-20T14:45:00.000Z"
+ *                   timeZone: "America/Sao_Paulo"
+ *       401:
+ *         description: Token de acesso não fornecido ou inválido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               missingToken:
+ *                 value:
+ *                   error: "Token de acesso necessário"
+ *               invalidToken:
+ *                 value:
+ *                   error: "Token inválido"
+ *       400:
+ *         description: Erro de validação dos parâmetros
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationError'
+ *             example:
+ *               success: false
+ *               error: "Erro de validação"
+ *               details:
+ *                 - field: "page"
+ *                   message: "Expected number, received string"
+ *       500:
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Erro ao buscar usuários"
+ */
+
+
 /**
  * Handles the request to get a paginated list of users with optional filters.
  *
@@ -40,13 +154,86 @@ export const getUsersHandler: RequestHandler = async (
     res.json(result);
   } catch (error: any) {
     if (error instanceof ZodError) {
-      res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({
+        success: false,
+        error: 'Erro de validação',
+        details: error.errors.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
     }
-    res.status(500).json({
-      error: error.message || "Erro ao buscar usuários",
+    return res.status(500).json({
+      error: "Erro ao buscar usuários",
     });
   }
 };
+
+/**
+ * @openapi
+ * /api/users/{id}:
+ *   get:
+ *     tags:
+ *       - Users
+ *     summary: Busca um usuário pelo ID
+ *     description: |
+ *       Retorna os detalhes completos de um usuário específico pelo seu ID único.
+ *       **Requer autenticação**: Este endpoint requer um token JWT válido no header Authorization.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *           description: ID único do usuário (UUID)
+ *           example: "550e8400-e29b-41d4-a716-446655440000"
+ *     responses:
+ *       200:
+ *         description: Usuário encontrado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserResponse'
+ *             example:
+ *               id: "550e8400-e29b-41d4-a716-446655440000"
+ *               name: "João Silva"
+ *               email: "joao.silva@email.com"
+ *               createdAt: "2024-01-15T10:30:00.000Z"
+ *               updatedAt: "2024-01-20T14:45:00.000Z"
+ *               timeZone: "America/Sao_Paulo"
+ *       401:
+ *         description: Token de acesso não fornecido ou inválido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               missingToken:
+ *                 value:
+ *                   error: "Token de acesso necessário"
+ *               invalidToken:
+ *                 value:
+ *                   error: "Token inválido"
+ *       404:
+ *         description: Usuário não encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Usuário não encontrado"
+ *       500:
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Erro ao buscar usuário"
+ */
 
 /**
  * Handles the request to get a specific user by their ID.
@@ -59,6 +246,7 @@ export const getUsersHandler: RequestHandler = async (
  * @throws {404} When the user is not found
  * @throws {500} When an internal server error occurs
  */
+
 export const getUserByIdHandler: RequestHandler = async (
   req: Request,
   res: Response,
@@ -74,11 +262,76 @@ export const getUserByIdHandler: RequestHandler = async (
 
     res.json(user);
   } catch (error: any) {
-    res.status(500).json({
-      error: error.message || "Erro ao buscar usuário",
+    return res.status(500).json({
+      error: "Erro ao buscar usuário",
     });
   }
 };
+
+/**
+ * @openapi
+ * /api/users:
+ *   post:
+ *     tags:
+ *       - Users
+ *     summary: Cria um novo usuário
+ *     description: |
+ *       Cria um novo usuário no sistema com senha hasheada.
+ *       O email deve ser único no sistema.
+ *       A senha é automaticamente hasheada antes de ser armazenada.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UserCreate'
+ *           example:
+ *             name: "João Silva"
+ *             email: "joao.silva@email.com"
+ *             password: "minhaSenha123"
+ *     responses:
+ *       201:
+ *         description: Usuário criado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Usuário criado com sucesso"
+ *                 user:
+ *                   $ref: '#/components/schemas/UserResponse'
+ *             example:
+ *               message: "Usuário criado com sucesso"
+ *               user:
+ *                 id: "550e8400-e29b-41d4-a716-446655440000"
+ *                 name: "João Silva"
+ *                 email: "joao.silva@email.com"
+ *                 createdAt: "2024-01-15T10:30:00.000Z"
+ *                 updatedAt: "2024-01-15T10:30:00.000Z"
+ *                 timeZone: "America/Sao_Paulo"
+ *       400:
+ *         description: Erro de validação ou email já existe
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - $ref: '#/components/schemas/ValidationError'
+ *                 - $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               validationError:
+ *                 value:
+ *                   success: false
+ *                   error: "Erro de validação"
+ *                   details:
+ *                     - field: "email"
+ *                       message: "Email inválido"
+ *               duplicateEmail:
+ *                 value:
+ *                   error: "Email já está em uso"
+ */
+
 
 /**
  * Handles the request to create a new user.
@@ -108,13 +361,128 @@ export const createUserHandler: RequestHandler = async (
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
-      res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({
+        success: false,
+        error: 'Erro de validação',
+        details: error.errors.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
     }
-    res.status(400).json({
-      error: error.errors || error.message || "Erro ao criar usuário",
+    return res.status(400).json({
+      error: error.errors || "Erro ao criar usuário",
     });
   }
 };
+
+/**
+ * @openapi
+ * /api/users/{id}:
+ *   put:
+ *     tags:
+ *       - Users
+ *     summary: Atualiza um usuário existente
+ *     description: |
+ *       Atualiza parcialmente os dados de um usuário existente.
+ *       Todos os campos são opcionais. Se a senha for fornecida, ela será hasheada automaticamente.
+ *       O email, se fornecido, deve ser único no sistema.
+ *       **Requer autenticação**: Este endpoint requer um token JWT válido no header Authorization.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *           description: ID único do usuário a ser atualizado
+ *           example: "550e8400-e29b-41d4-a716-446655440000"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UserUpdate'
+ *           examples:
+ *             updateName:
+ *               value:
+ *                 name: "João Silva Santos"
+ *             updateEmail:
+ *               value:
+ *                 email: "novo.email@email.com"
+ *             updatePassword:
+ *               value:
+ *                 password: "novaSenhaSegura123"
+ *             updateMultiple:
+ *               value:
+ *                 name: "João S. Santos"
+ *                 email: "joao.santos@email.com"
+ *     responses:
+ *       200:
+ *         description: Usuário atualizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Usuário atualizado com sucesso"
+ *                 user:
+ *                   $ref: '#/components/schemas/UserResponse'
+ *             example:
+ *               message: "Usuário atualizado com sucesso"
+ *               user:
+ *                 id: "550e8400-e29b-41d4-a716-446655440000"
+ *                 name: "João Silva Santos"
+ *                 email: "joao.santos@email.com"
+ *                 createdAt: "2024-01-15T10:30:00.000Z"
+ *                 updatedAt: "2024-01-20T15:30:00.000Z"
+ *                 timeZone: "America/Sao_Paulo"
+ *       401:
+ *         description: Token de acesso não fornecido ou inválido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               missingToken:
+ *                 value:
+ *                   error: "Token de acesso necessário"
+ *               invalidToken:
+ *                 value:
+ *                   error: "Token inválido"
+ *       400:
+ *         description: Erro de validação, email duplicado ou erro ao atualizar
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - $ref: '#/components/schemas/ValidationError'
+ *                 - $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               validationError:
+ *                 value:
+ *                   success: false
+ *                   error: "Erro de validação"
+ *                   details:
+ *                     - field: "email"
+ *                       message: "Email inválido"
+ *               duplicateEmail:
+ *                 value:
+ *                   error: "Email já está em uso"
+ *       404:
+ *         description: Usuário não encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Usuário não encontrado"
+ */
+
 
 /**
  * Handles the request to update an existing user by ID.
@@ -145,14 +513,92 @@ export const updateUserHandler: RequestHandler = async (
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
-      res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({
+        success: false,
+        error: 'Erro de validação',
+        details: error.errors.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
     }
-    res.status(400).json({
-      error: error.errors || error.message || "Erro ao atualizar usuário",
+    return res.status(400).json({
+      error: error.errors || "Erro ao atualizar usuário",
     });
   }
 };
 
+/**
+ * @openapi
+ * /api/users/{id}:
+ *   delete:
+ *     tags:
+ *       - Users
+ *     summary: Deleta um usuário pelo ID
+ *     description: |
+ *       Remove permanentemente um usuário do sistema.
+ *       **Atenção**: Esta operação é irreversível e também removerá
+ *       todos os dados relacionados ao usuário (medicações, histórico, etc.).
+ *       **Requer autenticação**: Este endpoint requer um token JWT válido no header Authorization.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *           description: ID único do usuário a ser deletado
+ *           example: "550e8400-e29b-41d4-a716-446655440000"
+ *     responses:
+ *       200:
+ *         description: Usuário deletado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Usuário deletado com sucesso"
+ *             example:
+ *               message: "Usuário deletado com sucesso"
+ *       401:
+ *         description: Token de acesso não fornecido ou inválido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               missingToken:
+ *                 value:
+ *                   error: "Token de acesso necessário"
+ *               invalidToken:
+ *                 value:
+ *                   error: "Token inválido"
+ *       400:
+ *         description: Erro ao deletar usuário (usuário não existe ou tem dependências)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               userNotFound:
+ *                 value:
+ *                   error: "Erro ao deletar usuário"
+ *               hasDependencies:
+ *                 value:
+ *                   error: "Não é possível deletar usuário com medicações ativas"
+ *       404:
+ *         description: Usuário não encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Usuário não encontrado"
+ */
 /**
  * Handles the request to delete a user by ID.
  *
@@ -174,10 +620,80 @@ export const deleteUserHandler: RequestHandler = async (
     res.json({ message: "Usuário deletado com sucesso" });
   } catch (error: any) {
     res.status(400).json({
-      error: error.message || "Erro ao deletar usuário",
+      error: "Erro ao deletar usuário",
     });
   }
 };
+
+/**
+ * @openapi
+ * /api/users/login:
+ *   post:
+ *     tags:
+ *       - Users
+ *     summary: Autentica um usuário (login)
+ *     description: |
+ *       Autentica um usuário usando email e senha.
+ *       Retorna os dados do usuário (sem a senha) e um token JWT para autenticação em requisições futuras.
+ *       O token JWT deve ser incluído no header Authorization: Bearer {token} das requisições protegidas.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UserLogin'
+ *           example:
+ *             email: "joao.silva@email.com"
+ *             password: "minhaSenha123"
+ *     responses:
+ *       200:
+ *         description: Login realizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LoginResponse'
+ *             example:
+ *               message: "Login realizado com sucesso"
+ *               user:
+ *                 id: "550e8400-e29b-41d4-a716-446655440000"
+ *                 name: "João Silva"
+ *                 email: "joao.silva@email.com"
+ *                 createdAt: "2024-01-15T10:30:00.000Z"
+ *                 updatedAt: "2024-01-20T14:45:00.000Z"
+ *                 timeZone: "America/Sao_Paulo"
+ *               token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJlbWFpbCI6ImpvYW8uc2lsdmFAZW1haWwuY29tIiwiaWF0IjoxNzA1MzI1NDAwLCJleHAiOjE3MDU0MTE4MDB9..."
+ *       400:
+ *         description: Erro de validação dos dados de entrada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ValidationError'
+ *             example:
+ *               success: false
+ *               error: "Erro de validação"
+ *               details:
+ *                 - field: "email"
+ *                   message: "Email inválido"
+ *                 - field: "password"
+ *                   message: "Senha é obrigatória"
+ *       401:
+ *         description: Credenciais inválidas (email ou senha incorretos)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Credenciais inválidas"
+ *       500:
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Erro ao fazer login"
+ */
+
 
 /**
  * Handles the request to authenticate a user (login).
@@ -201,11 +717,12 @@ export const loginUserHandler: RequestHandler = async (
 ) => {
   try {
     const data = LoginSchema.parse(req.body);
-    const user = await userService.loginUser(data);
+    const result = await userService.loginUser(data);
     
     res.json({
       message: "Login realizado com sucesso",
-      user,
+      user: result.user,
+      token: result.token,
     });
   } catch (error: any) {
     if (error.message === "Credenciais inválidas") {
@@ -214,10 +731,17 @@ export const loginUserHandler: RequestHandler = async (
       });
     }
     if (error instanceof ZodError) {
-      res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({
+        success: false,
+        error: 'Erro de validação',
+        details: error.errors.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
     }
-    res.status(400).json({
-      error: error.errors || error.message || "Erro ao fazer login",
+    return res.status(400).json({
+      error: error.errors || "Erro ao fazer login",
     });
   }
 };

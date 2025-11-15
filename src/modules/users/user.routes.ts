@@ -7,14 +7,15 @@ import {
   deleteUserHandler,
   loginUserHandler,
 } from "./user.controller";
+import { authenticateToken } from "../../shared/middlewares/auth";
 
 const router = Router();
 
-router.get("/", getUsersHandler);
-router.get("/:id", getUserByIdHandler);
+router.get("/", authenticateToken, getUsersHandler);
+router.get("/:id", authenticateToken, getUserByIdHandler);
 router.post("/", createUserHandler);
 router.post("/login", loginUserHandler);
-router.put("/:id", updateUserHandler);
-router.delete("/:id", deleteUserHandler);
+router.put("/:id", authenticateToken, updateUserHandler);
+router.delete("/:id", authenticateToken, deleteUserHandler);
 
 export default router;

@@ -1,6 +1,7 @@
 import prisma from "../../shared/lib/prisma";
 import { UserSchema, UserQuery, LoginSchema } from "./user.schema";
 import bcrypt from "bcrypt";
+import { generateToken } from "../../shared/utils/jwt";
 
 export async function getUsers(query: UserQuery) {
   const { page, limit, orderBy = "createdAt", order = "asc", ...filters } = query;
@@ -80,6 +81,14 @@ export async function loginUser(data: LoginSchema) {
     throw new Error("Credenciais inválidas");
   }
 
+  const token = generateToken({
+    userId: user.id,
+    email: user.email,
+  });
+
   const { password: _, ...userWithoutPassword } = user;
-  return userWithoutPassword;
+  return {
+    user: userWithoutPassword,
+    token,
+  };
 }
