@@ -32,6 +32,7 @@ export const partialMedicationSchema = medicationSchema.partial();
 export type MedicationSchema = z.infer<typeof medicationSchema>;
 
 export const medicationQuerySchema = z.object({
+  userId: z.string().optional(),
   page: z.coerce.number().min(1).optional(),
   limit: z.coerce.number().min(1).max(100).optional(),
   name: z.string().optional(),

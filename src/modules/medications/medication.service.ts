@@ -5,9 +5,10 @@ export async function getMedications(query: MedicationQuery) {
   const { page, limit, ...filters } = query;
 
   const where: any = {};
+  if (filters.userId) where.userId = filters.userId;
   if (filters.name) where.name = { contains: filters.name, mode: "insensitive" };
   if (filters.dosage) where.dosage = { contains: filters.dosage, mode: "insensitive" };
-  if (filters.frequency) where.frequency = { contains: filters.frequency, mode: "insensitive" };
+  if (filters.frequency) where.frequency = filters.frequency;
   if (filters.expiresAt) where.expiresAt = filters.expiresAt;
   if (filters.stock !== undefined) where.stock = filters.stock;
 
