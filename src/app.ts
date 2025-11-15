@@ -3,6 +3,7 @@ import routes from './routes';
 import cors from 'cors';
 import { requestLogger, errorLogger } from './shared/middlewares/logging';
 import { compressionMiddleware, cacheMiddleware } from './shared/middlewares/optimization';
+import { setupSwagger } from "./swagger/swaggerConfig";
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+setupSwagger(app);
 
 // Middleware de logging de requests
 app.use(requestLogger);

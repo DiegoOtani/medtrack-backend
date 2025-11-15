@@ -154,6 +154,8 @@ describe("User API (mocked)", () => {
         updatedAt: mockDate.toISOString(),
       });
       expect(response.body.user.password).toBeUndefined();
+      expect(response.body.token).toBeDefined();
+      expect(typeof response.body.token).toBe("string");
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { email: "joao@example.com" },
       });
