@@ -5,6 +5,10 @@ import {
   getMedications,
   getMedicationsById,
   deleteMedication,
+  getTodayMedications,
+  updateMedicationStock,
+  getLowStockMedications,
+  getOutOfStockMedications,
 } from './medication.service';
 import { createMedicationSchedules } from '../schedules/schedules.service';
 import {
@@ -189,6 +193,178 @@ export const deleteMedicationHandler: RequestHandler = async (
   } catch (error: any) {
     res.status(400).json({
       error: error.message || 'Erro ao deletar medicamento',
+    });
+  }
+};
+
+/**
+ * Handles the request to get today's medications for the authenticated user.
+ *
+ * @param {RequestHandler} req - Express request object
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with today's medications
+ *
+ * @throws {401} When user is not authenticated
+ * @throws {500} When an internal server error occurs
+ */
+export const getTodayMedicationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const medications = await getTodayMedications(userId);
+    res.json({
+      success: true,
+      data: medications,
+      message: 'Medicamentos de hoje recuperados com sucesso',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Erro ao buscar medicamentos de hoje',
+      },
+    });
+  }
+};
+
+/**
+ * Handles the request to update medication stock.
+ *
+ * @param {RequestHandler} req - Express request object containing medication ID and new stock
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with the updated medication
+ *
+ * @throws {400} When validation fails
+ * @throws {404} When medication is not found
+ */
+export const updateMedicationStockHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { stock } = req.body;
+
+    if (typeof stock !== 'number' || stock < 0) {
+      return res.status(400).json({ error: 'Estoque deve ser um número não negativo' });
+    }
+
+    const medication = await updateMedicationStock(id, stock);
+    res.json({
+      message: 'Estoque atualizado com sucesso',
+      medication,
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      error: error.message || 'Erro ao atualizar estoque',
+    });
+  }
+};
+
+/**
+ * Handles the request to get medications with low stock.
+ *
+ * @param {RequestHandler} req - Express request object with optional threshold parameter
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with low stock medications
+ *
+ * @throws {401} When user is not authenticated
+ */
+export const getLowStockMedicationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const threshold = req.query.threshold ? parseInt(req.query.threshold as string) : 5;
+    const medications = await getLowStockMedications(userId, threshold);
+
+    res.json({
+      success: true,
+      data: medications,
+      message: 'Medicamentos com estoque baixo recuperados com sucesso',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Erro ao buscar medicamentos com estoque baixo',
+      },
+    });
+  }
+};
+
+/**
+ * Handles the request to get medications that are out of stock.
+ *
+ * @param {RequestHandler} req - Express request object
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with out of stock medications
+ *
+ * @throws {401} When user is not authenticated
+ */
+export const getOutOfStockMedicationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const medications = await getOutOfStockMedications(userId);
+
+    res.json({
+      success: true,
+      data: medications,
+      message: 'Medicamentos sem estoque recuperados com sucesso',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Erro ao buscar medicamentos sem estoque',
+      },
     });
   }
 };

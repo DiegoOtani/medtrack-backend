@@ -3,6 +3,44 @@ import * as historyService from './history.service';
 import { CreateHistoryInput } from './history.schemas';
 
 /**
+ * GET /api/history
+ * Gets history entries for the authenticated user
+ */
+export const getHistoryByAuthenticatedUserHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const { startDate, endDate, action, limit } = req.query;
+
+    const history = await historyService.getHistoryByUser(userId, {
+      startDate: startDate as string,
+      endDate: endDate as string,
+      action: action as any,
+      limit: limit ? Number(limit) : undefined,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: history,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro ao buscar histórico',
+    });
+  }
+};
+
+/**
  * POST /api/history
  * Creates a new medication history entry
  */
@@ -27,10 +65,7 @@ export const createHistoryHandler = async (req: Request, res: Response) => {
  * GET /api/history/medication/:medicationId
  * Gets history entries by medication ID
  */
-export const getHistoryByMedicationHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const getHistoryByMedicationHandler = async (req: Request, res: Response) => {
   try {
     const { medicationId } = req.params;
     const { startDate, endDate, action, limit } = req.query;
@@ -49,8 +84,7 @@ export const getHistoryByMedicationHandler = async (
   } catch (error) {
     return res.status(400).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Erro ao buscar histórico',
+      error: error instanceof Error ? error.message : 'Erro ao buscar histórico',
     });
   }
 };
@@ -78,8 +112,7 @@ export const getHistoryByUserHandler = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(400).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Erro ao buscar histórico',
+      error: error instanceof Error ? error.message : 'Erro ao buscar histórico',
     });
   }
 };
@@ -100,8 +133,7 @@ export const getHistoryByIdHandler = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(404).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Histórico não encontrado',
+      error: error instanceof Error ? error.message : 'Histórico não encontrado',
     });
   }
 };
@@ -122,8 +154,7 @@ export const deleteHistoryHandler = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(404).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Erro ao excluir histórico',
+      error: error instanceof Error ? error.message : 'Erro ao excluir histórico',
     });
   }
 };
