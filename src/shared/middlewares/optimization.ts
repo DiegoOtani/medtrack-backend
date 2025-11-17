@@ -17,8 +17,14 @@ export const compressionMiddleware = (req: Request, res: Response, next: NextFun
  * Middleware para adicionar headers de cache apropriados
  */
 export const cacheMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  // Para rotas GET, adicionar cache de curta duração
-  if (req.method === 'GET') {
+  // Não cachear rotas de medicamentos que mudam frequentemente
+  if (req.path.startsWith('/api/medications')) {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  // Para outras rotas GET, adicionar cache de curta duração
+  else if (req.method === 'GET') {
     // Cache por 5 minutos para dados que mudam frequentemente
     res.set('Cache-Control', 'private, max-age=300');
   } else {

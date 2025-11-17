@@ -1,9 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import routes from './routes';
 import cors from 'cors';
 import { requestLogger, errorLogger } from './shared/middlewares/logging';
 import { compressionMiddleware, cacheMiddleware } from './shared/middlewares/optimization';
-import { setupSwagger } from "./swagger/swaggerConfig";
+import { setupSwagger } from './swagger/swaggerConfig';
 
 const app = express();
 

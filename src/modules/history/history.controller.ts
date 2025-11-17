@@ -91,6 +91,25 @@ import * as historyService from './history.service';
 import { CreateHistoryInput } from './history.schemas';
 
 /**
+ * Interface for history item returned by Prisma with medication relation
+ */
+interface HistoryWithMedication {
+  id: string;
+  medicationId: string;
+  scheduleId: string | null;
+  scheduledFor: Date | null;
+  action: string;
+  quantity: number | null;
+  notes: string | null;
+  createdAt: Date;
+  medication: {
+    id: string;
+    name: string;
+    dosage: string;
+  } | null;
+}
+
+/**
  * GET /api/history
  * Gets history entries for the authenticated user
  */
@@ -107,18 +126,32 @@ export const getHistoryByAuthenticatedUserHandler = async (req: Request, res: Re
       });
     }
 
-    const { startDate, endDate, action, limit } = req.query;
+    const { startDate, endDate } = req.query;
 
     const history = await historyService.getHistoryByUser(userId, {
       startDate: startDate as string,
       endDate: endDate as string,
-      action: action as any,
-      limit: limit ? Number(limit) : undefined,
+      limit: 100, // Limitar para não sobrecarregar
     });
+
+    // Mapear dados do Prisma para o formato esperado pelo frontend
+    const formattedHistory = history.map((item: HistoryWithMedication) => ({
+      id: item.id,
+      scheduleId: item.scheduleId || '',
+      medicationName: item.medication?.name || 'Medicamento desconhecido',
+      dosage: item.medication?.dosage || '',
+      scheduledTime:
+        item.scheduledFor?.toISOString() ||
+        item.createdAt?.toISOString() ||
+        new Date().toISOString(),
+      status: mapActionToStatus(item.action),
+      confirmedAt: item.action === 'TAKEN' ? item.createdAt?.toISOString() : undefined,
+      postponedTo: item.action === 'POSTPONED' ? item.scheduledFor?.toISOString() : undefined,
+    }));
 
     return res.status(200).json({
       success: true,
-      data: history,
+      data: formattedHistory,
     });
   } catch (error) {
     return res.status(400).json({
@@ -772,3 +805,21 @@ export const getAdherenceStatsHandler = async (req: Request, res: Response) => {
     });
   }
 };
+
+/**
+ * Helper function to map HistoryAction to status expected by frontend
+ */
+function mapActionToStatus(action: string): 'confirmed' | 'missed' | 'postponed' {
+  switch (action) {
+    case 'TAKEN':
+      return 'confirmed';
+    case 'MISSED':
+      return 'missed';
+    case 'POSTPONED':
+      return 'postponed';
+    case 'SKIPPED':
+      return 'missed';
+    default:
+      return 'missed';
+  }
+}

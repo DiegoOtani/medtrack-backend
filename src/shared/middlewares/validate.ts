@@ -7,8 +7,7 @@ import { AnyZodObject, ZodError } from 'zod';
  * @returns Express middleware function
  */
 export const validate =
-  (schema: AnyZodObject) =>
-  async (req: Request, res: Response, next: NextFunction) => {
+  (schema: AnyZodObject) => async (req: Request, res: Response, next: NextFunction) => {
     try {
       await schema.parseAsync({
         body: req.body,

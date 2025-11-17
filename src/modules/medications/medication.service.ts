@@ -1,8 +1,14 @@
 import prisma from '../../shared/lib/prisma';
 import { MedicationSchema, MedicationQuery } from './medication.schemas';
 
-export async function getMedications(query: MedicationQuery) {
-  const { page, limit, ...filters } = query;
+export async function getMedications(query: MedicationQuery & { userId?: string }) {
+  console.log(`[MedicationService] getMedications called with:`, query);
+
+  const { page, limit, userId, ...filters } = query;
+  console.log(
+    `[MedicationService] page: ${page}, limit: ${limit}, userId: ${userId}, filters:`,
+    filters
+  );
 
   const where: any = {};
   if (filters.name) where.name = { contains: filters.name, mode: 'insensitive' };
@@ -10,25 +16,41 @@ export async function getMedications(query: MedicationQuery) {
   if (filters.frequency) where.frequency = { contains: filters.frequency, mode: 'insensitive' };
   if (filters.expiresAt) where.expiresAt = filters.expiresAt;
   if (filters.stock !== undefined) where.stock = filters.stock;
+  // Filtrar apenas medicamentos do usuário autenticado
+  if (userId) where.userId = userId;
+
+  console.log(`[MedicationService] where clause:`, where);
 
   const take = limit ?? undefined;
   const skip = page && limit ? (page - 1) * limit : undefined;
 
-  const [items, total] = await Promise.all([
-    prisma.medication.findMany({
-      where,
-      skip,
-      take,
-    }),
-    prisma.medication.count({ where }),
-  ]);
+  console.log(`[MedicationService] take: ${take}, skip: ${skip}`);
 
-  return {
-    total,
-    page: page ?? 1,
-    limit: limit ?? total,
-    items,
-  };
+  try {
+    const [items, total] = await Promise.all([
+      prisma.medication.findMany({
+        where,
+        skip,
+        take,
+      }),
+      prisma.medication.count({ where }),
+    ]);
+
+    console.log(`[MedicationService] Found ${items.length} items, total: ${total}`);
+
+    const result = {
+      total,
+      page: page ?? 1,
+      limit: limit ?? total,
+      items,
+    };
+
+    console.log(`[MedicationService] Returning result:`, result);
+    return result;
+  } catch (error) {
+    console.error(`[MedicationService] Database error:`, error);
+    throw error;
+  }
 }
 
 export async function getTodayMedications(userId: string) {
@@ -145,12 +167,35 @@ export async function createMedication(data: MedicationSchema) {
 }
 
 export async function updateMedication(id: string, data: Partial<MedicationSchema>) {
-  return prisma.medication.update({
+  console.log(`[MedicationService] updateMedication chamado com id: ${id}`);
+  console.log(`[MedicationService] Dados para atualizar:`, JSON.stringify(data, null, 2));
+
+  const result = await prisma.medication.update({
     where: { id },
     data,
   });
+
+  console.log(`[MedicationService] Resultado da atualização:`, JSON.stringify(result, null, 2));
+
+  return result;
 }
 
 export async function deleteMedication(id: string) {
-  return prisma.medication.delete({ where: { id } });
+  // Primeiro deletar os registros relacionados
+  await prisma.medicationSchedule.deleteMany({
+    where: { medicationId: id },
+  });
+
+  await prisma.medicationHistory.deleteMany({
+    where: { medicationId: id },
+  });
+
+  await prisma.scheduledNotification.deleteMany({
+    where: { medicationId: id },
+  });
+
+  // Depois deletar o medicamento
+  return prisma.medication.delete({
+    where: { id },
+  });
 }

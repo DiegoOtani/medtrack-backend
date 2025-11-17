@@ -64,6 +64,7 @@ model Medication {
 
 enum Frequency {
   ONE_TIME
+  DAILY
   TWICE_A_DAY
   THREE_TIMES_A_DAY
   FOUR_TIMES_A_DAY
@@ -101,6 +102,7 @@ enum HistoryAction {
   TAKEN
   SKIPPED
   MISSED
+  POSTPONED
   EXPIRED
   RESTOCKED
   DISCARDED

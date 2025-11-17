@@ -125,8 +125,11 @@ export const updateSettingsHandler: RequestHandler = async (
   try {
     const { body } = updateSettingsSchema.parse(req);
     const userId = (req as any).user?.id || 'user-123'; // Fallback para desenvolvimento
+    console.log('[Backend] updateSettingsHandler - userId:', userId);
+    console.log('[Backend] updateSettingsHandler - body:', body);
 
     const settings = await notificationService.updateNotificationSettings(userId, body);
+    console.log('[Backend] updateSettingsHandler - configurações salvas:', settings);
 
     res.json({
       message: 'Configurações de notificação atualizadas com sucesso',
@@ -152,10 +155,14 @@ export const getSettingsHandler: RequestHandler = async (
 ) => {
   try {
     const userId = (req as any).user?.id || 'user-123'; // Fallback para desenvolvimento
+    console.log('[Backend] getSettingsHandler - userId:', userId);
+    console.log('[Backend] getSettingsHandler - req.user:', (req as any).user);
 
     const settings = await prisma.reminderSettings.findUnique({
       where: { userId },
     });
+
+    console.log('[Backend] getSettingsHandler - configurações encontradas:', settings);
 
     // Se não encontrou configurações, retorna valores padrão
     const responseSettings = settings || {
@@ -166,10 +173,13 @@ export const getSettingsHandler: RequestHandler = async (
       quietHoursEnd: null,
     };
 
+    console.log('[Backend] getSettingsHandler - retornando configurações:', responseSettings);
+
     res.json({
       settings: responseSettings,
     });
   } catch (error: any) {
+    console.error('[Backend] getSettingsHandler - erro:', error);
     res.status(500).json({
       error: error.message || 'Erro ao buscar configurações',
     });

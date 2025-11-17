@@ -23,10 +23,20 @@ export const validateMedicationData = (req: Request, res: Response, next: NextFu
   if (
     !frequency ||
     typeof frequency !== 'string' ||
-    !['daily', 'twice_daily', 'three_times_daily', 'weekly'].includes(frequency)
+    ![
+      'ONE_TIME',
+      'TWICE_A_DAY',
+      'THREE_TIMES_A_DAY',
+      'FOUR_TIMES_A_DAY',
+      'EVERY_OTHER_DAY',
+      'WEEKLY',
+      'MONTHLY',
+      'AS_NEEDED',
+      'CUSTOM',
+    ].includes(frequency)
   ) {
     errors.push(
-      'Frequência deve ser uma das opções: daily, twice_daily, three_times_daily, weekly'
+      'Frequência deve ser uma das opções: ONE_TIME, TWICE_A_DAY, THREE_TIMES_A_DAY, FOUR_TIMES_A_DAY, EVERY_OTHER_DAY, WEEKLY, MONTHLY, AS_NEEDED, CUSTOM'
     );
   }
 
