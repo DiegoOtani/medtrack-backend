@@ -1,5 +1,7 @@
 import prisma from '../../shared/lib/prisma';
 import { MedicationSchema, MedicationQuery } from './medication.schemas';
+import { addMinutes, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { recreateSchedules } from '../schedules/schedules.service';
 
 export async function getMedications(query: MedicationQuery & { userId?: string }) {
   const { page, limit, userId, ...filters } = query;
@@ -32,10 +34,20 @@ export async function getMedications(query: MedicationQuery & { userId?: string 
   };
 }
 
-export async function getTodayMedications(userId: string) {
-  const today = new Date();
-  const dayOfWeek = today.getDay();
+/**
+ * Get today's medications with timezone support
+ * @param userId - User ID
+ * @param userTimezone - User's timezone offset in minutes (e.g., -180 for UTC-3)
+ */
+export async function getTodayMedications(userId: string, userTimezone?: number) {
+  // Use user's timezone if provided, otherwise use server timezone
+  const timezoneOffset = userTimezone !== undefined ? userTimezone : new Date().getTimezoneOffset();
 
+  // Create date in user's timezone using date-fns
+  const now = new Date();
+  const userDate = addMinutes(now, timezoneOffset);
+
+  const dayOfWeek = userDate.getDay();
   const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
   const dayName = dayNames[dayOfWeek];
 
@@ -59,8 +71,15 @@ export async function getTodayMedications(userId: string) {
 
   const todayMedications = await Promise.all(
     schedules.map(async (schedule) => {
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+      const startOfDay = new Date(userDate.getFullYear(), userDate.getMonth(), userDate.getDate());
+      const endOfDay = new Date(
+        userDate.getFullYear(),
+        userDate.getMonth(),
+        userDate.getDate(),
+        23,
+        59,
+        59
+      );
 
       const todayHistory = await prisma.medicationHistory.findFirst({
         where: {
@@ -76,13 +95,27 @@ export async function getTodayMedications(userId: string) {
       });
 
       const [hours, minutes] = schedule.time.split(':').map(Number);
-      const scheduledTime = new Date(today);
-      scheduledTime.setHours(hours, minutes, 0, 0);
 
-      const now = new Date();
+      // Criar scheduledTime no mesmo dia de userDate
+      const year = userDate.getUTCFullYear();
+      const month = userDate.getUTCMonth();
+      const day = userDate.getUTCDate();
+      const scheduledTime = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+
+      const currentUserTime = new Date(userDate);
+
       let status: 'confirmed' | 'pending' | 'missed' = 'pending';
 
+      // Marcar como MISSED apenas se:
+      // 1. Já passou do horário
+      // 2. Medicamento foi criado antes do horário agendado
+      // 3. Não foi tomado/pulado
+      const hasPassed = currentUserTime > scheduledTime;
+      const medicationCreatedAt = new Date(schedule.medication.createdAt);
+      const wasScheduledAfterCreation = scheduledTime >= medicationCreatedAt;
+
       if (todayHistory) {
+        // Já tem histórico - usar status do histórico
         if (todayHistory.action === 'TAKEN') {
           status = 'confirmed';
         } else if (todayHistory.action === 'MISSED') {
@@ -90,7 +123,8 @@ export async function getTodayMedications(userId: string) {
         } else if (todayHistory.action === 'SKIPPED') {
           status = 'missed';
         }
-      } else if (now > scheduledTime) {
+      } else if (hasPassed && wasScheduledAfterCreation) {
+        // Passou do horário E medicamento existia - marcar como MISSED
         status = 'missed';
 
         await prisma.medicationHistory.create({
@@ -115,11 +149,26 @@ export async function getTodayMedications(userId: string) {
         scheduleId: schedule.id,
         scheduledTime: scheduledTime.toISOString(),
         status,
+        hasPassed, // ✅ NOVO: indicar se já passou
       };
     })
   );
 
-  return todayMedications;
+  // Filtrar: Mostrar apenas do DIA ATUAL
+  // 1. Doses CONFIRMADAS (tomadas hoje)
+  // 2. Doses FUTURAS (pending - ainda não passou o horário)
+  // 3. NÃO mostrar MISSED (passadas e não tomadas)
+  const confirmedMedications = todayMedications.filter((med) => med.status === 'confirmed');
+  const upcomingMedications = todayMedications.filter(
+    (med) => !med.hasPassed && med.status === 'pending'
+  );
+
+  // Combinar confirmados + futuros, ordenados por horário
+  const result = [...confirmedMedications, ...upcomingMedications].sort(
+    (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
+  );
+
+  return result;
 }
 
 export async function updateMedicationStock(medicationId: string, newStock: number) {
@@ -167,15 +216,92 @@ export async function getMedicationsById(id: string) {
   return prisma.medication.findUnique({ where: { id } });
 }
 
-export async function createMedication(data: MedicationSchema) {
+export async function createMedication(data: MedicationSchema, userTimezone?: number) {
+  // Validar se o horário de início não é no passado (considerando timezone do usuário)
+  if (data.startTime) {
+    const now = new Date();
+    const timezoneOffset =
+      userTimezone !== undefined ? userTimezone : new Date().getTimezoneOffset();
+
+    // Calcular hora atual no timezone do usuário com date-fns
+    const userNow = addMinutes(now, timezoneOffset);
+
+    const [hours, minutes] = data.startTime.split(':').map(Number);
+
+    const startTimeToday = new Date(userNow);
+    startTimeToday.setHours(hours, minutes, 0, 0);
+
+    // Se o horário já passou hoje, não permitir
+    if (startTimeToday < userNow) {
+      const horaAtual = userNow.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      throw new Error(
+        `O horário de início (${data.startTime}) já passou. ` +
+          `Hora atual: ${horaAtual}. ` +
+          `Por favor, escolha um horário futuro.`
+      );
+    }
+  }
+
   return prisma.medication.create({ data });
 }
 
 export async function updateMedication(id: string, data: Partial<MedicationSchema>) {
-  return prisma.medication.update({
+  // Buscar medicamento atual para comparar mudanças
+  const currentMedication = await prisma.medication.findUnique({
+    where: { id },
+    select: {
+      frequency: true,
+      intervalHours: true,
+      startTime: true,
+    },
+  });
+
+  if (!currentMedication) {
+    throw new Error('Medicamento não encontrado');
+  }
+
+  // Verificar se houve mudança na frequência, intervalo ou horário de início
+  const frequencyChanged = data.frequency && data.frequency !== currentMedication.frequency;
+  const intervalChanged =
+    data.intervalHours && data.intervalHours !== currentMedication.intervalHours;
+  const startTimeChanged = data.startTime && data.startTime !== currentMedication.startTime;
+
+  const needsScheduleRecreation = frequencyChanged || intervalChanged || startTimeChanged;
+
+  // Se precisa recriar schedules, deletar os antigos primeiro
+  if (needsScheduleRecreation) {
+    // Deletar schedules antigos
+    await prisma.medicationSchedule.deleteMany({
+      where: { medicationId: id },
+    });
+
+    // Deletar notificações agendadas antigas
+    await prisma.scheduledNotification.deleteMany({
+      where: { medicationId: id },
+    });
+  }
+
+  // Atualizar medicamento
+  const updatedMedication = await prisma.medication.update({
     where: { id },
     data,
   });
+
+  // Se precisa recriar schedules, criar novos
+  if (needsScheduleRecreation) {
+    // Usar dados novos se fornecidos, senão manter os atuais
+    const finalFrequency = data.frequency || currentMedication.frequency;
+    const finalIntervalHours = data.intervalHours || currentMedication.intervalHours;
+    const finalStartTime = data.startTime || currentMedication.startTime;
+
+    await recreateSchedules(id, finalFrequency, finalStartTime, finalIntervalHours);
+  }
+
+  return updatedMedication;
 }
 
 export async function deleteMedication(id: string) {

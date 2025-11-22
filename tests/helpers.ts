@@ -2,11 +2,19 @@ import jwt from 'jsonwebtoken';
 
 /**
  * Gera um token JWT válido para testes
+ * @param userId - ID do usuário (padrão: 'test-user-id')
+ * @param email - Email do usuário (padrão: 'test@example.com')
+ * @returns Token JWT assinado com o mesmo secret usado na aplicação
  */
-export function generateTestToken(userId: string = 'test-user-id'): string {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET || 'test-secret', {
-    expiresIn: '1h',
-  });
+export function generateTestToken(
+  userId: string = 'test-user-id',
+  email: string = 'test@example.com'
+): string {
+  // Usa o mesmo secret que jwt.ts para garantir compatibilidade
+  const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+  // Payload compatível com TokenPayload de jwt.ts
+  return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '1h' });
 }
 
 /**

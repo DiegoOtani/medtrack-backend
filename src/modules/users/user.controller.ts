@@ -928,16 +928,16 @@ export const registerHandler: RequestHandler = async (
     const existingUser = await userService.getUserByEmail(data.email);
     if (existingUser) {
       return res.status(409).json({
-        error: 'Usuário já existe com este email',
+        success: false,
+        error: {
+          code: 'EMAIL_ALREADY_EXISTS',
+          message: 'Usuário já existe com este email',
+        },
       });
     }
 
-    // Criar usuário com senha hasheada
-    const hashedPassword = await bcrypt.hash(data.password, 10);
-    const user = await userService.createUser({
-      ...data,
-      password: hashedPassword,
-    });
+    // Criar usuário (o service já faz hash da senha)
+    const user = await userService.createUser(data);
 
     // Gerar token JWT
     const token = generateToken({
@@ -949,16 +949,29 @@ export const registerHandler: RequestHandler = async (
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(201).json({
+      success: true,
+      data: {
+        user: userWithoutPassword,
+        token,
+      },
       message: 'Usuário registrado com sucesso',
-      user: userWithoutPassword,
-      token,
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: error.errors[0].message,
+        },
+      });
     }
     res.status(400).json({
-      error: error.message || 'Erro ao registrar usuário',
+      success: false,
+      error: {
+        code: 'REGISTER_ERROR',
+        message: error.message || 'Erro ao registrar usuário',
+      },
     });
   }
 };
@@ -1059,21 +1072,38 @@ export const loginHandler: RequestHandler = async (
     const result = await userService.loginUser(data);
 
     res.json({
+      success: true,
+      data: {
+        user: result.user,
+        token: result.token,
+      },
       message: 'Login realizado com sucesso',
-      user: result.user,
-      token: result.token,
     });
   } catch (error: any) {
     if (error.message === 'Credenciais inválidas') {
       return res.status(401).json({
-        error: 'Credenciais inválidas',
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Credenciais inválidas',
+        },
       });
     }
     if (error instanceof ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: error.errors[0].message,
+        },
+      });
     }
     res.status(400).json({
-      error: error.message || 'Erro ao fazer login',
+      success: false,
+      error: {
+        code: 'LOGIN_ERROR',
+        message: error.message || 'Erro ao fazer login',
+      },
     });
   }
 };

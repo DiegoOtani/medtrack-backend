@@ -139,7 +139,14 @@ export const createMedicationHandler: RequestHandler = async (
     const userId = req.user?.id;
     const data = medicationSchema.parse({ ...req.body, userId });
 
-    const medication = await createMedication({ ...data, userId });
+    // Extrair timezone do usuário (mesma lógica de getTodayMedications)
+    const timezoneOffset = req.query.timezone
+      ? parseInt(req.query.timezone as string)
+      : req.headers['x-timezone-offset']
+        ? parseInt(req.headers['x-timezone-offset'] as string)
+        : undefined;
+
+    const medication = await createMedication({ ...data, userId }, timezoneOffset);
     const schedules = await createMedicationSchedules(
       medication.id,
       medication.frequency,
@@ -918,7 +925,16 @@ export const getTodayMedicationsHandler: RequestHandler = async (
       });
     }
 
-    const medications = await getTodayMedications(userId);
+    // Get timezone offset from query param or header
+    // Expected: offset in minutes (e.g., -180 for UTC-3, 0 for UTC)
+    const timezoneOffset = req.query.timezone
+      ? parseInt(req.query.timezone as string)
+      : req.headers['x-timezone-offset']
+        ? parseInt(req.headers['x-timezone-offset'] as string)
+        : undefined;
+
+    const medications = await getTodayMedications(userId, timezoneOffset);
+
     res.json({
       success: true,
       data: medications,

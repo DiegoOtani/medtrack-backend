@@ -25,7 +25,6 @@ router.get('/me', getCurrentUserHandler);
 router.get('/', getUsersHandler);
 router.get('/:id', getUserByIdHandler);
 router.post('/', createUserHandler);
-router.post('/login', loginUserHandler);
 router.put('/:id', updateUserHandler);
 router.delete('/:id', deleteUserHandler);
 
