@@ -180,11 +180,9 @@ function asNeededSchedule(
   time: Prisma.MedicationScheduleCreateInput['time'];
   daysOfWeek: Prisma.MedicationScheduleCreateInput['daysOfWeek'];
 }> {
-  // As needed doesn't have a fixed schedule, return empty array
   return [];
 }
 
-// Export all schedule handlers
 const scheduleHandlers: {
   [key in Frequency]: (
     startTime: Prisma.MedicationCreateArgs['data']['startTime'],
@@ -195,7 +193,7 @@ const scheduleHandlers: {
   }>;
 } = {
   ONE_TIME: onceADaySchedule,
-  DAILY: onceADaySchedule, // DAILY é o mesmo que ONE_TIME (uma vez por dia)
+  DAILY: onceADaySchedule,
   TWICE_A_DAY: twiceADaySchedule,
   THREE_TIMES_A_DAY: threeTimesADaySchedule,
   FOUR_TIMES_A_DAY: fourTimesADaySchedule,

@@ -17,22 +17,9 @@ export const createMedicationSchedules = async (
   startTime?: string,
   intervalHours?: number | null
 ) => {
-  console.log(`[createMedicationSchedules] Criando schedules para medicationId: ${medicationId}`);
-  console.log(
-    `[createMedicationSchedules] Frequency: ${frequency}, StartTime: ${startTime}, IntervalHours: ${intervalHours}`
-  );
-
   const schedules = scheduleHandlers[frequency](startTime, intervalHours);
 
-  console.log(
-    `[createMedicationSchedules] Schedules gerados pelo handler:`,
-    JSON.stringify(schedules, null, 2)
-  );
-
   if (schedules.length === 0) {
-    console.log(
-      `[createMedicationSchedules] Nenhum agendamento gerado para frequency ${frequency}`
-    );
     return { count: 0, message: 'Nenhum agendamento criado' };
   }
 
@@ -42,18 +29,9 @@ export const createMedicationSchedules = async (
     daysOfWeek: schedule.daysOfWeek,
   }));
 
-  console.log(
-    `[createMedicationSchedules] Dados para inserir no DB:`,
-    JSON.stringify(dataToInsert, null, 2)
-  );
-
   const createdSchedules = await prisma.medicationSchedule.createMany({
     data: dataToInsert,
   });
-
-  console.log(
-    `[createMedicationSchedules] ✅ ${createdSchedules.count} schedules criados com sucesso`
-  );
 
   if (createdSchedules.count !== schedules.length) {
     throw new Error('Erro ao criar os agendamentos');

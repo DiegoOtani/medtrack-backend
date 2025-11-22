@@ -137,14 +137,8 @@ export const createMedicationHandler: RequestHandler = async (
 ) => {
   try {
     const userId = req.user?.id;
-    // const mockUserId = '550e8400-e29b-41d4-a716-446655440000';
     const data = medicationSchema.parse({ ...req.body, userId });
 
-    // if (!userId) {
-    //   return res.status(401).json({ error: "Usuário não autenticado" });
-    // }
-
-    // Cria o medicamento associando ao userId
     const medication = await createMedication({ ...data, userId });
     const schedules = await createMedicationSchedules(
       medication.id,
@@ -153,14 +147,11 @@ export const createMedicationHandler: RequestHandler = async (
       medication.intervalHours
     );
 
-    // Agendar notificações automaticamente
     try {
       const autoScheduler = new AutoSchedulerService();
       await autoScheduler.scheduleMedicationNotifications(medication.id);
-      console.log(`Notificações agendadas automaticamente para medicamento ${medication.id}`);
     } catch (schedulerError) {
       console.error('Erro ao agendar notificações automaticamente:', schedulerError);
-      // Não falhar a criação do medicamento por causa do agendamento
     }
 
     res.status(201).json({
@@ -169,7 +160,6 @@ export const createMedicationHandler: RequestHandler = async (
       schedules,
     });
   } catch (error: any) {
-    console.error('Erro ao criar medicamento:', error);
     if (error instanceof ZodError) {
       return res.status(400).json({
         success: false,
@@ -346,16 +336,9 @@ export const getMedicationsHandler: RequestHandler = async (
   _next: NextFunction
 ) => {
   try {
-    console.log(`[GetMedications] ===== INÍCIO DA REQUISIÇÃO =====`);
-    console.log(`[GetMedications] Request query:`, req.query);
-    console.log(`[GetMedications] Request headers:`, req.headers);
-    console.log(`[GetMedications] Request user:`, req.user);
-
     const userId = req.user?.id;
-    console.log(`[GetMedications] User ID:`, userId);
 
     if (!userId) {
-      console.log(`[GetMedications] Usuário não autenticado, retornando 401`);
       return res.status(401).json({
         success: false,
         error: {
@@ -365,33 +348,18 @@ export const getMedicationsHandler: RequestHandler = async (
       });
     }
 
-    console.log(`[GetMedications] Parsing query schema...`);
     const query = medicationQuerySchema.partial().parse(req.query);
-    console.log(`[GetMedications] Query parsed:`, query);
-
-    // Adicionar filtro de userId para segurança
-    console.log(`[GetMedications] Calling getMedications service...`);
     const medications = await getMedications({ ...query, userId });
-    console.log(`[GetMedications] Service returned:`, JSON.stringify(medications, null, 2));
-    console.log(`[GetMedications] Type of medications:`, typeof medications);
-    console.log(`[GetMedications] Medications keys:`, Object.keys(medications));
 
     const response = {
       success: true,
       data: medications,
       message: 'Medicamentos recuperados com sucesso',
     };
-    console.log(`[GetMedications] Response to send:`, JSON.stringify(response, null, 2));
 
     res.json(response);
-    console.log(`[GetMedications] ===== FIM DA REQUISIÇÃO =====`);
   } catch (error: any) {
-    console.error(`[GetMedications] ===== ERRO =====`);
-    console.error(`[GetMedications] Error:`, error);
-    console.error(`[GetMedications] Error stack:`, error.stack);
-
     if (error instanceof ZodError) {
-      console.error(`[GetMedications] Zod validation errors:`, error.errors);
       return res.status(400).json({
         success: false,
         error: 'Erro de validação',
@@ -402,7 +370,6 @@ export const getMedicationsHandler: RequestHandler = async (
       });
     }
 
-    console.error(`[GetMedications] Returning 500 error`);
     return res.status(500).json({
       error: 'Erro ao buscar medicamentos',
     });
@@ -515,7 +482,6 @@ export const getMedicationByIdHandler: RequestHandler = async (
       });
     }
 
-    // Verificar se o medicamento pertence ao usuário
     if (medication.userId !== userId) {
       return res.status(403).json({
         success: false,
@@ -532,7 +498,6 @@ export const getMedicationByIdHandler: RequestHandler = async (
       message: 'Medicamento encontrado com sucesso',
     });
   } catch (error: any) {
-    console.error(`[GetMedicationById] Erro ao buscar medicamento:`, error);
     return res.status(500).json({
       success: false,
       error: {
@@ -656,17 +621,10 @@ export const updateMedicationHandler: RequestHandler = async (
   res: Response,
   next: NextFunction
 ) => {
-  console.log(`[UpdateMedication] Request body raw:`, req.body);
-  console.log(`[UpdateMedication] Request headers:`, req.headers);
-
   try {
     const { id } = req.params;
     const userId = req.user?.id;
     const rawData = req.body;
-
-    console.log(`[UpdateMedication] Tentando atualizar medicamento: ${id}`);
-    console.log(`[UpdateMedication] User autenticado:`, userId);
-    console.log(`[UpdateMedication] Dados recebidos:`, JSON.stringify(rawData, null, 2));
 
     if (!userId) {
       return res.status(401).json({
@@ -679,9 +637,7 @@ export const updateMedicationHandler: RequestHandler = async (
     }
 
     const data = partialMedicationSchema.parse(rawData);
-    console.log(`[UpdateMedication] Dados após validação:`, JSON.stringify(data, null, 2));
 
-    // Validação adicional: data de validade deve ser futura
     if (data.expiresAt && data.expiresAt <= new Date()) {
       return res.status(400).json({
         success: false,
@@ -695,7 +651,6 @@ export const updateMedicationHandler: RequestHandler = async (
       });
     }
 
-    // Verificar se o medicamento existe e pertence ao usuário
     const existingMedication = await getMedicationsById(id);
     if (!existingMedication) {
       return res.status(404).json({
@@ -707,7 +662,6 @@ export const updateMedicationHandler: RequestHandler = async (
       });
     }
 
-    // Verificar se o medicamento pertence ao usuário
     if (existingMedication.userId !== userId) {
       return res.status(403).json({
         success: false,
@@ -718,29 +672,15 @@ export const updateMedicationHandler: RequestHandler = async (
       });
     }
 
-    console.log(
-      `[UpdateMedication] Medicamento existente:`,
-      JSON.stringify(existingMedication, null, 2)
-    );
-
     const medication = await updateMedication(id, data);
-    console.log(
-      `[UpdateMedication] Medicamento atualizado com sucesso:`,
-      JSON.stringify(medication, null, 2)
-    );
 
-    // Reagendar notificações se campos relevantes foram alterados
     const relevantFieldsChanged = data.frequency || data.startTime || data.intervalHours;
     if (relevantFieldsChanged) {
       try {
         const autoScheduler = new AutoSchedulerService();
         await autoScheduler.rescheduleMedicationNotifications(medication.id);
-        console.log(
-          `[UpdateMedication] Notificações reagendadas para medicamento ${medication.id}`
-        );
       } catch (schedulerError) {
         console.error('[UpdateMedication] Erro ao reagendar notificações:', schedulerError);
-        // Não falhar a atualização por causa do reagendamento
       }
     }
 
@@ -751,7 +691,6 @@ export const updateMedicationHandler: RequestHandler = async (
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
-      console.error(`[UpdateMedication] Erro de validação Zod:`, error.errors);
       return res.status(400).json({
         success: false,
         error: 'Erro de validação',
@@ -761,7 +700,6 @@ export const updateMedicationHandler: RequestHandler = async (
         })),
       });
     }
-    console.error(`[UpdateMedication] Erro ao atualizar:`, error);
     return res.status(500).json({
       success: false,
       error: {
@@ -848,9 +786,6 @@ export const deleteMedicationHandler: RequestHandler = async (
     const { id } = req.params;
     const userId = req.user?.id;
 
-    console.log(`[DeleteMedication] Tentando deletar medicamento: ${id}`);
-    console.log(`[DeleteMedication] User autenticado:`, userId);
-
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -861,7 +796,6 @@ export const deleteMedicationHandler: RequestHandler = async (
       });
     }
 
-    // Verificar se o medicamento existe e pertence ao usuário
     const medication = await getMedicationsById(id);
     if (!medication) {
       return res.status(404).json({
@@ -873,7 +807,6 @@ export const deleteMedicationHandler: RequestHandler = async (
       });
     }
 
-    // Verificar se o medicamento pertence ao usuário
     if (medication.userId !== userId) {
       return res.status(403).json({
         success: false,
@@ -884,15 +817,13 @@ export const deleteMedicationHandler: RequestHandler = async (
       });
     }
 
-    const result = await deleteMedication(id);
-    console.log(`[DeleteMedication] Medicamento deletado com sucesso:`, result);
+    await deleteMedication(id);
 
     return res.json({
       success: true,
       message: 'Medicamento deletado com sucesso',
     });
   } catch (error: any) {
-    console.error(`[DeleteMedication] Erro ao deletar:`, error);
     return res.status(500).json({
       success: false,
       error: {
@@ -969,9 +900,6 @@ export const updateMedicationStockHandler: RequestHandler = async (
     const { stock } = req.body;
     const userId = req.user?.id;
 
-    console.log(`[UpdateStock] Tentando atualizar estoque do medicamento: ${id}`);
-    console.log(`[UpdateStock] User autenticado:`, userId);
-
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -992,7 +920,6 @@ export const updateMedicationStockHandler: RequestHandler = async (
       });
     }
 
-    // Verificar se o medicamento existe e pertence ao usuário
     const existingMedication = await getMedicationsById(id);
     if (!existingMedication) {
       return res.status(404).json({
@@ -1004,7 +931,6 @@ export const updateMedicationStockHandler: RequestHandler = async (
       });
     }
 
-    // Verificar se o medicamento pertence ao usuário
     if (existingMedication.userId !== userId) {
       return res.status(403).json({
         success: false,
@@ -1016,7 +942,6 @@ export const updateMedicationStockHandler: RequestHandler = async (
     }
 
     const medication = await updateMedicationStock(id, stock);
-    console.log(`[UpdateStock] Estoque atualizado com sucesso`);
 
     res.json({
       success: true,
@@ -1024,7 +949,6 @@ export const updateMedicationStockHandler: RequestHandler = async (
       medication,
     });
   } catch (error: any) {
-    console.error(`[UpdateStock] Erro ao atualizar estoque:`, error);
     res.status(500).json({
       success: false,
       error: {
