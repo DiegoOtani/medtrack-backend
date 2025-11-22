@@ -57,6 +57,14 @@ export async function getTodayMedications(userId: string) {
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
 
+  // Converter número do dia para nome do dia (SUNDAY, MONDAY, etc.)
+  const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  const dayName = dayNames[dayOfWeek];
+
+  console.log(
+    `[getTodayMedications] Buscando medicamentos para userId: ${userId}, dia: ${dayName}`
+  );
+
   // Buscar agendamentos ativos que incluem hoje
   const schedules = await prisma.medicationSchedule.findMany({
     where: {
@@ -65,7 +73,7 @@ export async function getTodayMedications(userId: string) {
       },
       isActive: true,
       daysOfWeek: {
-        has: dayOfWeek.toString(),
+        has: dayName, // Usar o nome do dia em vez do número
       },
     },
     include: {
@@ -76,21 +84,26 @@ export async function getTodayMedications(userId: string) {
     },
   });
 
+  console.log(`[getTodayMedications] Encontrados ${schedules.length} agendamentos para hoje`);
+
   // Para cada agendamento, verificar se já foi tomado hoje
   const todayMedications = await Promise.all(
     schedules.map(async (schedule) => {
-      // Verificar se já existe histórico para hoje
+      // Verificar se já existe histórico para ESTE SCHEDULE ESPECÍFICO hoje
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
 
+      // Buscar qualquer histórico para este schedule hoje (TAKEN, MISSED, SKIPPED)
       const todayHistory = await prisma.medicationHistory.findFirst({
         where: {
-          medicationId: schedule.medicationId,
+          scheduleId: schedule.id,
           createdAt: {
             gte: startOfDay,
             lte: endOfDay,
           },
-          action: 'TAKEN',
+        },
+        orderBy: {
+          createdAt: 'desc', // Pegar o mais recente
         },
       });
 
@@ -99,21 +112,62 @@ export async function getTodayMedications(userId: string) {
       const scheduledTime = new Date(today);
       scheduledTime.setHours(hours, minutes, 0, 0);
 
+      // Determinar o status baseado no histórico e no horário
+      const now = new Date();
+      let status: 'confirmed' | 'pending' | 'missed' = 'pending';
+
+      if (todayHistory) {
+        // Se já existe histórico, usar a ação registrada
+        if (todayHistory.action === 'TAKEN') {
+          status = 'confirmed';
+        } else if (todayHistory.action === 'MISSED') {
+          status = 'missed';
+        } else if (todayHistory.action === 'SKIPPED') {
+          status = 'missed'; // Tratar SKIPPED como missed para UI
+        }
+      } else if (now > scheduledTime) {
+        // Se o horário já passou e não há histórico, criar registro de MISSED
+        status = 'missed';
+
+        // Registrar automaticamente como MISSED no histórico
+        try {
+          await prisma.medicationHistory.create({
+            data: {
+              medicationId: schedule.medicationId,
+              scheduleId: schedule.id,
+              scheduledFor: scheduledTime,
+              action: 'MISSED',
+              notes: 'Dose não tomada no horário programado (registrado automaticamente)',
+            },
+          });
+          console.log(
+            `[getTodayMedications] 📝 Dose MISSED registrada automaticamente: ${schedule.medication.name} às ${schedule.time}`
+          );
+        } catch (error) {
+          console.error(`[getTodayMedications] ⚠️ Erro ao registrar MISSED:`, error);
+        }
+      }
+
+      console.log(
+        `[getTodayMedications] ${schedule.medication.name} às ${schedule.time}: status=${status}`
+      );
+
       return {
         id: schedule.medication.id,
         name: schedule.medication.name,
         dosage: schedule.medication.dosage,
         time: schedule.time,
-        taken: !!todayHistory,
+        taken: status === 'confirmed',
         postponed: false, // TODO: implementar lógica de adiamento
         userId: schedule.medication.userId,
         scheduleId: schedule.id,
         scheduledTime: scheduledTime.toISOString(),
-        status: todayHistory ? 'confirmed' : 'pending',
+        status,
       };
     })
   );
 
+  console.log(`[getTodayMedications] Retornando ${todayMedications.length} medicamentos`);
   return todayMedications;
 }
 

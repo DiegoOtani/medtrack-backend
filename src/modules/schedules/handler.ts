@@ -1,14 +1,6 @@
 import { Frequency, Prisma } from '@prisma/client';
 
-const DAYS_OF_WEEK = [
-  'MONDAY',
-  'TUESDAY',
-  'WEDNESDAY',
-  'THURSDAY',
-  'FRIDAY',
-  'SATURDAY',
-  'SUNDAY',
-];
+const DAYS_OF_WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
 /**
  * Time calculator helper function to add interval hours to the start time
@@ -18,9 +10,7 @@ function timeCalculator(startTime: string, interval: number) {
   const totalMinutes = hours * 60 + minutes + interval * 60;
   const newHours = Math.floor(totalMinutes / 60) % 24;
   const newMinutes = totalMinutes % 60;
-  return `${newHours.toString().padStart(2, '0')}:${newMinutes
-    .toString()
-    .padStart(2, '0')}`;
+  return `${newHours.toString().padStart(2, '0')}:${newMinutes.toString().padStart(2, '0')}`;
 }
 
 /**
@@ -205,6 +195,7 @@ const scheduleHandlers: {
   }>;
 } = {
   ONE_TIME: onceADaySchedule,
+  DAILY: onceADaySchedule, // DAILY é o mesmo que ONE_TIME (uma vez por dia)
   TWICE_A_DAY: twiceADaySchedule,
   THREE_TIMES_A_DAY: threeTimesADaySchedule,
   FOUR_TIMES_A_DAY: fourTimesADaySchedule,
