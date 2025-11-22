@@ -2,8 +2,8 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import * as userService from './user.service';
 import { UserSchema, UserQuery, LoginSchema, RegisterSchema } from './user.schema';
 import { ZodError } from 'zod';
-import { AuthService } from '../../shared/services/auth.service';
-
+import bcrypt from 'bcrypt';
+import { generateToken } from '../../shared/utils/jwt';
 
 /**
  * @openapi
@@ -116,7 +116,6 @@ import { AuthService } from '../../shared/services/auth.service';
  *             example:
  *               error: "Erro ao buscar usuários"
  */
-
 
 /**
  * Handles the request to get a paginated list of users with optional filters.
@@ -328,7 +327,6 @@ export const getUserByIdHandler: RequestHandler = async (
  *                   error: "Email já está em uso"
  */
 
-
 /**
  * Handles the request to create a new user.
  *
@@ -478,7 +476,6 @@ export const createUserHandler: RequestHandler = async (
  *             example:
  *               error: "Usuário não encontrado"
  */
-
 
 /**
  * Handles the request to update an existing user by ID.
@@ -632,6 +629,54 @@ export const deleteUserHandler: RequestHandler = async (
  * @throws {401} When user is not authenticated
  * @throws {404} When the user is not found
  */
+/**
+ * @openapi
+ * /api/users/me:
+ *   get:
+ *     tags:
+ *       - Users
+ *     summary: Busca dados do usuário autenticado
+ *     description: |
+ *       Retorna os dados completos do usuário atualmente autenticado.
+ *       Útil para sincronizar dados do usuário no frontend após login ou ao recarregar o app.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dados do usuário retornados com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserResponse'
+ *             example:
+ *               id: "550e8400-e29b-41d4-a716-446655440000"
+ *               name: "João Silva"
+ *               email: "joao.silva@email.com"
+ *               createdAt: "2024-01-15T10:30:00.000Z"
+ *               updatedAt: "2024-01-15T10:30:00.000Z"
+ *       401:
+ *         description: Usuário não autenticado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Usuário não autenticado"
+ *       404:
+ *         description: Usuário não encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Usuário não encontrado"
+ *       500:
+ *         description: Erro interno do servidor
+ */
 export const getCurrentUserHandler: RequestHandler = async (
   req: Request,
   res: Response,
@@ -727,7 +772,6 @@ export const getCurrentUserHandler: RequestHandler = async (
  *               error: "Erro ao fazer login"
  */
 
-
 /**
  * Handles the request to authenticate a user (login).
  *
@@ -751,9 +795,9 @@ export const loginUserHandler: RequestHandler = async (
   try {
     const data = LoginSchema.parse(req.body);
     const result = await userService.loginUser(data);
-    
+
     res.json({
-      message: "Login realizado com sucesso",
+      message: 'Login realizado com sucesso',
       user: result.user,
       token: result.token,
     });
@@ -780,7 +824,97 @@ export const loginUserHandler: RequestHandler = async (
 };
 
 /**
- * Handles user registration with JWT token generation
+ * @openapi
+ * /api/users/register:
+ *   post:
+ *     tags:
+ *       - Users
+ *     summary: Registra um novo usuário
+ *     description: |
+ *       Cria uma nova conta de usuário no sistema.
+ *       Retorna os dados do usuário criado (sem a senha) e um token JWT para autenticação automática.
+ *       **Rate Limit:** 5 requisições por 15 minutos para prevenir abuso.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 minLength: 2
+ *                 maxLength: 100
+ *                 description: Nome completo do usuário
+ *                 example: "João Silva"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Email único do usuário
+ *                 example: "joao.silva@email.com"
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *                 description: Senha do usuário (será hasheada)
+ *                 example: "senha123"
+ *     responses:
+ *       201:
+ *         description: Usuário registrado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Usuário registrado com sucesso"
+ *                 user:
+ *                   $ref: '#/components/schemas/UserResponse'
+ *                 token:
+ *                   type: string
+ *                   description: Token JWT para autenticação
+ *                   example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *             example:
+ *               message: "Usuário registrado com sucesso"
+ *               user:
+ *                 id: "550e8400-e29b-41d4-a716-446655440000"
+ *                 name: "João Silva"
+ *                 email: "joao.silva@email.com"
+ *                 createdAt: "2024-01-15T10:30:00.000Z"
+ *                 updatedAt: "2024-01-15T10:30:00.000Z"
+ *               token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *       400:
+ *         description: Erro de validação
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *             examples:
+ *               invalidData:
+ *                 value:
+ *                   error: "Email inválido"
+ *               shortPassword:
+ *                 value:
+ *                   error: "Senha deve ter no mínimo 6 caracteres"
+ *       409:
+ *         description: Email já cadastrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Usuário já existe com este email"
+ *       429:
+ *         description: Rate limit excedido
  */
 export const registerHandler: RequestHandler = async (
   req: Request,
@@ -789,21 +923,37 @@ export const registerHandler: RequestHandler = async (
 ) => {
   try {
     const data = RegisterSchema.parse(req.body);
-    const authService = new AuthService();
 
-    const result = await authService.register(data.email, data.password, data.name);
-
-    res.status(201).json({
-      message: 'Usuário registrado com sucesso',
-      user: result.user,
-      token: result.token,
-    });
-  } catch (error: any) {
-    if (error.message === 'Usuário já existe com este email') {
+    // Verificar se usuário já existe
+    const existingUser = await userService.getUserByEmail(data.email);
+    if (existingUser) {
       return res.status(409).json({
         error: 'Usuário já existe com este email',
       });
     }
+
+    // Criar usuário com senha hasheada
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const user = await userService.createUser({
+      ...data,
+      password: hashedPassword,
+    });
+
+    // Gerar token JWT
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+    });
+
+    // Remover senha da resposta
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.status(201).json({
+      message: 'Usuário registrado com sucesso',
+      user: userWithoutPassword,
+      token,
+    });
+  } catch (error: any) {
     if (error instanceof ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
     }
@@ -814,7 +964,90 @@ export const registerHandler: RequestHandler = async (
 };
 
 /**
- * Handles user login with JWT token generation
+ * @openapi
+ * /api/users/login:
+ *   post:
+ *     tags:
+ *       - Users
+ *     summary: Autentica um usuário (login)
+ *     description: |
+ *       Realiza login de usuário existente usando email e senha.
+ *       Retorna os dados do usuário (sem a senha) e um token JWT válido por 7 dias.
+ *       O token deve ser incluído no header `Authorization: Bearer {token}` em requisições protegidas.
+ *       **Rate Limit:** 5 requisições por 15 minutos para prevenir ataques de força bruta.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Email do usuário
+ *                 example: "joao.silva@email.com"
+ *               password:
+ *                 type: string
+ *                 description: Senha do usuário
+ *                 example: "senha123"
+ *     responses:
+ *       200:
+ *         description: Login realizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Login realizado com sucesso"
+ *                 user:
+ *                   $ref: '#/components/schemas/UserResponse'
+ *                 token:
+ *                   type: string
+ *                   description: Token JWT para autenticação (válido por 7 dias)
+ *                   example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *             example:
+ *               message: "Login realizado com sucesso"
+ *               user:
+ *                 id: "550e8400-e29b-41d4-a716-446655440000"
+ *                 name: "João Silva"
+ *                 email: "joao.silva@email.com"
+ *                 createdAt: "2024-01-15T10:30:00.000Z"
+ *                 updatedAt: "2024-01-15T10:30:00.000Z"
+ *               token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *       400:
+ *         description: Erro de validação
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *             examples:
+ *               invalidEmail:
+ *                 value:
+ *                   error: "Email inválido"
+ *               missingPassword:
+ *                 value:
+ *                   error: "Senha é obrigatória"
+ *       401:
+ *         description: Credenciais inválidas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Credenciais inválidas"
+ *       429:
+ *         description: Rate limit excedido (muitas tentativas de login)
  */
 export const loginHandler: RequestHandler = async (
   req: Request,
@@ -823,9 +1056,7 @@ export const loginHandler: RequestHandler = async (
 ) => {
   try {
     const data = LoginSchema.parse(req.body);
-    const authService = new AuthService();
-
-    const result = await authService.login(data.email, data.password);
+    const result = await userService.loginUser(data);
 
     res.json({
       message: 'Login realizado com sucesso',

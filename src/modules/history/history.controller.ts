@@ -110,8 +110,90 @@ interface HistoryWithMedication {
 }
 
 /**
- * GET /api/history
- * Gets history entries for the authenticated user
+ * @openapi
+ * /api/history/me:
+ *   get:
+ *     tags:
+ *       - History
+ *     summary: Busca histórico do usuário autenticado
+ *     description: |
+ *       Retorna o histórico de medicamentos do usuário atualmente autenticado.
+ *       Permite filtrar por período (startDate e endDate) e retorna dados formatados para o frontend.
+ *       Inclui informações sobre medicamentos tomados, adiados, pulados ou perdidos.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Data de início do período (ISO 8601)
+ *         example: "2025-11-01T00:00:00.000Z"
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Data de fim do período (ISO 8601)
+ *         example: "2025-11-30T23:59:59.999Z"
+ *     responses:
+ *       200:
+ *         description: Histórico retornado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       scheduleId:
+ *                         type: string
+ *                         format: uuid
+ *                       medicationName:
+ *                         type: string
+ *                         example: "Paracetamol"
+ *                       dosage:
+ *                         type: string
+ *                         example: "500mg"
+ *                       scheduledTime:
+ *                         type: string
+ *                         format: date-time
+ *                       status:
+ *                         type: string
+ *                         enum: [taken, postponed, skipped, missed]
+ *                         description: Status mapeado da ação
+ *                       confirmedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Quando foi confirmado (apenas se status=taken)
+ *                       postponedTo:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Para quando foi adiado (apenas se status=postponed)
+ *             example:
+ *               success: true
+ *               data:
+ *                 - id: "770e8400-e29b-41d4-a716-446655440002"
+ *                   scheduleId: "660e8400-e29b-41d4-a716-446655440001"
+ *                   medicationName: "Paracetamol"
+ *                   dosage: "500mg"
+ *                   scheduledTime: "2025-11-22T08:00:00.000Z"
+ *                   status: "taken"
+ *                   confirmedAt: "2025-11-22T08:05:00.000Z"
+ *       400:
+ *         description: Erro ao buscar histórico
+ *       401:
+ *         description: Usuário não autenticado
  */
 export const getHistoryByAuthenticatedUserHandler = async (req: Request, res: Response) => {
   try {

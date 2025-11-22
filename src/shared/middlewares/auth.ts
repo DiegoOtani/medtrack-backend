@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/auth.service';
+import { verifyToken } from '../utils/jwt';
+import { getUserById } from '../../modules/users/user.service';
 
 /**
  * Middleware de autenticação JWT
@@ -21,15 +22,14 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     }
 
     // Verifica e decodifica o token
-    const authService = new AuthService();
-    const decoded = authService.verifyToken(token);
+    const decoded = verifyToken(token);
 
     if (!decoded) {
       return res.status(401).json({ error: 'Token inválido ou expirado' });
     }
 
     // Busca usuário completo
-    const user = await authService.getUserById(decoded.userId);
+    const user = await getUserById(decoded.userId);
 
     if (!user) {
       return res.status(401).json({ error: 'Usuário não encontrado' });

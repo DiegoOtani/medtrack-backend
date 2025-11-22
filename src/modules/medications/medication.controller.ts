@@ -845,6 +845,62 @@ export const deleteMedicationHandler: RequestHandler = async (
  * @throws {401} When user is not authenticated
  * @throws {500} When an internal server error occurs
  */
+/**
+ * @openapi
+ * /api/medications/today:
+ *   get:
+ *     tags:
+ *       - Medications
+ *     summary: Busca medicamentos programados para hoje
+ *     description: |
+ *       Retorna todos os medicamentos do usuário que estão programados para serem tomados hoje,
+ *       incluindo os horários de administração e status de cada dose.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Medicamentos de hoje retornados com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       name:
+ *                         type: string
+ *                       dosage:
+ *                         type: string
+ *                       schedules:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: string
+ *                               format: uuid
+ *                             time:
+ *                               type: string
+ *                               example: "08:00"
+ *                             taken:
+ *                               type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: "Medicamentos de hoje recuperados com sucesso"
+ *       401:
+ *         description: Usuário não autenticado
+ *       500:
+ *         description: Erro interno do servidor
+ */
 export const getTodayMedicationsHandler: RequestHandler = async (
   req: Request,
   res: Response,
@@ -889,6 +945,68 @@ export const getTodayMedicationsHandler: RequestHandler = async (
  *
  * @throws {400} When validation fails
  * @throws {404} When medication is not found
+ */
+/**
+ * @openapi
+ * /api/medications/{id}/stock:
+ *   put:
+ *     tags:
+ *       - Medications
+ *     summary: Atualiza apenas o estoque de um medicamento
+ *     description: |
+ *       Atualiza a quantidade em estoque de um medicamento específico.
+ *       Útil para reabastecer medicamentos sem alterar outras informações.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do medicamento
+ *         example: "550e8400-e29b-41d4-a716-446655440000"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - stock
+ *             properties:
+ *               stock:
+ *                 type: integer
+ *                 minimum: 0
+ *                 description: Nova quantidade em estoque
+ *                 example: 30
+ *     responses:
+ *       200:
+ *         description: Estoque atualizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Estoque atualizado com sucesso"
+ *                 medication:
+ *                   $ref: '#/components/schemas/MedicationResponse'
+ *       400:
+ *         description: Erro de validação (estoque inválido)
+ *       401:
+ *         description: Usuário não autenticado
+ *       403:
+ *         description: Sem permissão para atualizar este medicamento
+ *       404:
+ *         description: Medicamento não encontrado
+ *       500:
+ *         description: Erro interno do servidor
  */
 export const updateMedicationStockHandler: RequestHandler = async (
   req: Request,
@@ -969,6 +1087,59 @@ export const updateMedicationStockHandler: RequestHandler = async (
  *
  * @throws {401} When user is not authenticated
  */
+/**
+ * @openapi
+ * /api/medications/stock/low:
+ *   get:
+ *     tags:
+ *       - Medications
+ *     summary: Busca medicamentos com estoque baixo
+ *     description: |
+ *       Retorna lista de medicamentos do usuário que estão com estoque abaixo do limite especificado.
+ *       Útil para alertar o usuário sobre necessidade de reabastecimento.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: threshold
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 5
+ *         description: Limite de estoque baixo (padrão 5 unidades)
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Medicamentos com estoque baixo retornados com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MedicationResponse'
+ *                 message:
+ *                   type: string
+ *                   example: "Medicamentos com estoque baixo recuperados com sucesso"
+ *             example:
+ *               success: true
+ *               data:
+ *                 - id: "550e8400-e29b-41d4-a716-446655440000"
+ *                   name: "Paracetamol"
+ *                   dosage: "500mg"
+ *                   stock: 3
+ *                   frequency: "TWICE_A_DAY"
+ *               message: "Medicamentos com estoque baixo recuperados com sucesso"
+ *       401:
+ *         description: Usuário não autenticado
+ *       500:
+ *         description: Erro interno do servidor
+ */
 export const getLowStockMedicationsHandler: RequestHandler = async (
   req: Request,
   res: Response,
@@ -1014,6 +1185,50 @@ export const getLowStockMedicationsHandler: RequestHandler = async (
  * @returns {Promise<void>} Returns a JSON response with out of stock medications
  *
  * @throws {401} When user is not authenticated
+ */
+/**
+ * @openapi
+ * /api/medications/stock/out:
+ *   get:
+ *     tags:
+ *       - Medications
+ *     summary: Busca medicamentos sem estoque
+ *     description: |
+ *       Retorna lista de medicamentos do usuário que estão completamente sem estoque (stock = 0).
+ *       Alerta crítico para o usuário reabastecer medicamentos essenciais.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Medicamentos sem estoque retornados com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MedicationResponse'
+ *                 message:
+ *                   type: string
+ *                   example: "Medicamentos sem estoque recuperados com sucesso"
+ *             example:
+ *               success: true
+ *               data:
+ *                 - id: "550e8400-e29b-41d4-a716-446655440000"
+ *                   name: "Ibuprofeno"
+ *                   dosage: "600mg"
+ *                   stock: 0
+ *                   frequency: "THREE_TIMES_A_DAY"
+ *               message: "Medicamentos sem estoque recuperados com sucesso"
+ *       401:
+ *         description: Usuário não autenticado
+ *       500:
+ *         description: Erro interno do servidor
  */
 export const getOutOfStockMedicationsHandler: RequestHandler = async (
   req: Request,

@@ -14,7 +14,7 @@ import { authMiddleware } from '../../shared/middlewares/auth';
 import {
   validateMedicationData,
   sanitizeMedicationData,
-} from '../../shared/middlewares/validation';
+} from '../../shared/middlewares/medication-validation';
 import { medicationRateLimit } from '../../shared/middlewares/rate-limit';
 
 const router = Router();
