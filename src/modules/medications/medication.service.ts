@@ -96,15 +96,37 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
 
       const [hours, minutes] = schedule.time.split(':').map(Number);
 
-      // Criar scheduledTime no mesmo dia de userDate
-      const year = userDate.getUTCFullYear();
-      const month = userDate.getUTCMonth();
-      const day = userDate.getUTCDate();
-      const scheduledTime = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+      // Criar scheduledTime considerando o timezone do usuário
+      // schedule.time é hora LOCAL do usuário (ex: 19:00 BRT)
+      // timezoneOffset = -180 para BRT (UTC-3)
+      
+      // Para converter hora local para UTC:
+      // 19:00 BRT = 19:00 - (-3h) = 19:00 + 3h = 22:00 UTC
+      // Portanto, precisamos SUBTRAIR o offset (adicionar o valor negativo)
+      
+      const year = userDate.getFullYear();
+      const month = userDate.getMonth();
+      const day = userDate.getDate();
+      
+      // Criar timestamp em UTC para o horário LOCAL do usuário
+      let scheduledTime = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+      
+      // Converter de hora local para UTC: subtrair o offset
+      // timezoneOffset = -180 (BRT), então subtraímos -180 = adicionamos 180
+      scheduledTime = addMinutes(scheduledTime, -timezoneOffset);
+
+      // Se foi adiado (POSTPONED), usar o novo horário do histórico
+      if (todayHistory?.action === 'POSTPONED' && todayHistory.scheduledFor) {
+        console.log('[GET_TODAY] POSTPONED detectado!');
+        console.log('[GET_TODAY] scheduledTime ANTES:', scheduledTime.toISOString());
+        console.log('[GET_TODAY] todayHistory.scheduledFor:', todayHistory.scheduledFor);
+        scheduledTime = new Date(todayHistory.scheduledFor);
+        console.log('[GET_TODAY] scheduledTime DEPOIS:', scheduledTime.toISOString());
+      }
 
       const currentUserTime = new Date(userDate);
 
-      let status: 'confirmed' | 'pending' | 'missed' = 'pending';
+      let status: 'confirmed' | 'pending' | 'missed' | 'postponed' = 'pending';
 
       // Marcar como MISSED apenas se:
       // 1. Já passou do horário
@@ -122,6 +144,8 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
           status = 'missed';
         } else if (todayHistory.action === 'SKIPPED') {
           status = 'missed';
+        } else if (todayHistory.action === 'POSTPONED') {
+          status = 'postponed';
         }
       } else if (hasPassed && wasScheduledAfterCreation) {
         // Passou do horário E medicamento existia - marcar como MISSED
@@ -144,7 +168,7 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
         dosage: schedule.medication.dosage,
         time: schedule.time,
         taken: status === 'confirmed',
-        postponed: false,
+        postponed: status === 'postponed',
         userId: schedule.medication.userId,
         scheduleId: schedule.id,
         scheduledTime: scheduledTime.toISOString(),
@@ -157,14 +181,16 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
   // Filtrar: Mostrar apenas do DIA ATUAL
   // 1. Doses CONFIRMADAS (tomadas hoje)
   // 2. Doses FUTURAS (pending - ainda não passou o horário)
-  // 3. NÃO mostrar MISSED (passadas e não tomadas)
+  // 3. Doses ADIADAS (postponed)
+  // 4. NÃO mostrar MISSED (passadas e não tomadas)
   const confirmedMedications = todayMedications.filter((med) => med.status === 'confirmed');
+  const postponedMedications = todayMedications.filter((med) => med.status === 'postponed');
   const upcomingMedications = todayMedications.filter(
     (med) => !med.hasPassed && med.status === 'pending'
   );
 
-  // Combinar confirmados + futuros, ordenados por horário
-  const result = [...confirmedMedications, ...upcomingMedications].sort(
+  // Combinar confirmados + adiados + futuros, ordenados por horário
+  const result = [...confirmedMedications, ...postponedMedications, ...upcomingMedications].sort(
     (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
   );
 
