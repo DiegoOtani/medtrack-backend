@@ -6,6 +6,8 @@ import {
   cancelNotificationHandler,
   updateSettingsHandler,
   getSettingsHandler,
+  getScheduledNotificationsHandler,
+  cleanupNotificationsHandler,
 } from './notification.controller';
 import prisma from '../../shared/lib/prisma';
 
@@ -28,6 +30,12 @@ router.get('/test-db', async (req, res) => {
 
 // Todas as rotas de notificação requerem autenticação
 router.use(authMiddleware);
+
+// Buscar notificações agendadas
+router.get('/scheduled', getScheduledNotificationsHandler);
+
+// Limpar notificações antigas
+router.delete('/cleanup', cleanupNotificationsHandler);
 
 // Registrar token do dispositivo
 router.post('/register-device', registerDeviceHandler);

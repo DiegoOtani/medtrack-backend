@@ -100,8 +100,6 @@ export const registerDeviceHandler: RequestHandler = async (
       body.platform
     );
 
-    console.log('Device token created:', deviceToken);
-
     res.status(201).json({
       message: 'Token do dispositivo registrado com sucesso',
       deviceToken,
@@ -415,11 +413,8 @@ export const updateSettingsHandler: RequestHandler = async (
   try {
     const { body } = updateSettingsSchema.parse(req);
     const userId = (req as any).user?.id || 'user-123'; // Fallback para desenvolvimento
-    console.log('[Backend] updateSettingsHandler - userId:', userId);
-    console.log('[Backend] updateSettingsHandler - body:', body);
 
     const settings = await notificationService.updateNotificationSettings(userId, body);
-    console.log('[Backend] updateSettingsHandler - configurações salvas:', settings);
 
     res.json({
       message: 'Configurações de notificação atualizadas com sucesso',
@@ -431,6 +426,140 @@ export const updateSettingsHandler: RequestHandler = async (
     }
     res.status(400).json({
       error: error.message || 'Erro ao atualizar configurações',
+    });
+  }
+};
+
+/**
+ * @openapi
+ * /api/notifications/scheduled:
+ *   get:
+ *     tags:
+ *       - Notifications
+ *     summary: Busca notificações agendadas pendentes
+ *     description: |
+ *       Retorna todas as notificações que estão agendadas para o usuário e ainda não foram enviadas.
+ *       Usado pelo frontend para sincronizar notificações locais com o backend.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Notificações retornadas com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       medicationId:
+ *                         type: string
+ *                         format: uuid
+ *                       scheduleId:
+ *                         type: string
+ *                         format: uuid
+ *                       medicationName:
+ *                         type: string
+ *                       dosage:
+ *                         type: string
+ *                       scheduledTime:
+ *                         type: string
+ *                         format: date-time
+ *                       status:
+ *                         type: string
+ *                         enum: [PENDING, SENT, CANCELLED]
+ *       401:
+ *         description: Não autenticado
+ */
+/**
+ * @openapi
+ * /api/notifications/cleanup:
+ *   delete:
+ *     tags:
+ *       - Notifications
+ *     summary: Limpa notificações antigas/enviadas do usuário
+ *     description: Remove todas as notificações com status SENT, FAILED ou CANCELLED
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Notificações limpas com sucesso
+ */
+export const cleanupNotificationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = (req as any).user?.id;
+
+    // Deletar notificações que não estão mais pendentes
+    const result = await prisma.scheduledNotification.deleteMany({
+      where: {
+        userId,
+        status: {
+          in: ['SENT', 'FAILED', 'CANCELLED'],
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `${result.count} notificações antigas removidas`,
+      count: result.count,
+    });
+  } catch (error: any) {
+    console.error('[cleanupNotifications] Erro:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro ao limpar notificações',
+    });
+  }
+};
+
+export const getScheduledNotificationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = (req as any).user?.id || 'user-123';
+    const now = new Date();
+
+    // Buscar notificações pendentes (não enviadas e não canceladas)
+    const notifications = await prisma.scheduledNotification.findMany({
+      where: {
+        userId,
+        status: {
+          in: ['PENDING', 'scheduled'], // Aceitar ambos os status
+        },
+        scheduledTime: {
+          gte: now, // Apenas notificações futuras
+        },
+      },
+      orderBy: {
+        scheduledTime: 'asc',
+      },
+    });
+
+    res.json({
+      success: true,
+      data: notifications,
+    });
+  } catch (error: any) {
+    console.error('[getScheduledNotifications] Erro:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro ao buscar notificações agendadas',
     });
   }
 };
@@ -509,14 +638,10 @@ export const getSettingsHandler: RequestHandler = async (
 ) => {
   try {
     const userId = (req as any).user?.id || 'user-123'; // Fallback para desenvolvimento
-    console.log('[Backend] getSettingsHandler - userId:', userId);
-    console.log('[Backend] getSettingsHandler - req.user:', (req as any).user);
 
     const settings = await prisma.reminderSettings.findUnique({
       where: { userId },
     });
-
-    console.log('[Backend] getSettingsHandler - configurações encontradas:', settings);
 
     // Se não encontrou configurações, retorna valores padrão
     const responseSettings = settings || {
@@ -526,8 +651,6 @@ export const getSettingsHandler: RequestHandler = async (
       quietHoursStart: null,
       quietHoursEnd: null,
     };
-
-    console.log('[Backend] getSettingsHandler - retornando configurações:', responseSettings);
 
     res.json({
       settings: responseSettings,

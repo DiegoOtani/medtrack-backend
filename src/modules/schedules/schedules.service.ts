@@ -2,6 +2,7 @@ import { Frequency, Prisma } from '@prisma/client';
 import scheduleHandlers from './handler';
 import prisma from '../../shared/lib/prisma';
 import { CreateCustomScheduleInput, UpdateScheduleInput } from './schedules.schemas';
+import { medicationNotificationScheduler } from '../medications/medication-notification-scheduler';
 
 /**
  * Creates the schedules for a medication
@@ -212,10 +213,12 @@ export const toggleSchedule = async (id: string) => {
     throw new Error('Agendamento não encontrado');
   }
 
+  const newActiveStatus = !schedule.isActive;
+
   const updatedSchedule = await prisma.medicationSchedule.update({
     where: { id },
     data: {
-      isActive: !schedule.isActive,
+      isActive: newActiveStatus,
     },
     include: {
       medication: {
@@ -227,6 +230,9 @@ export const toggleSchedule = async (id: string) => {
       },
     },
   });
+
+  // 🔔 REMOVIDO: Backend não gerencia mais notificações locais
+  // Notificações locais são gerenciadas apenas pelo frontend
 
   return updatedSchedule;
 };
@@ -242,6 +248,9 @@ export const deleteSchedule = async (id: string) => {
   if (!schedule) {
     throw new Error('Agendamento não encontrado');
   }
+
+  // 🔔 REMOVIDO: Backend não gerencia mais notificações locais
+  // Notificações locais são gerenciadas apenas pelo frontend
 
   await prisma.medicationSchedule.delete({
     where: { id },

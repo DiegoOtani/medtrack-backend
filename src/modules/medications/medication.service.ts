@@ -2,6 +2,7 @@ import prisma from '../../shared/lib/prisma';
 import { MedicationSchema, MedicationQuery } from './medication.schemas';
 import { addMinutes, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { recreateSchedules } from '../schedules/schedules.service';
+import { medicationNotificationScheduler } from './medication-notification-scheduler';
 
 export async function getMedications(query: MedicationQuery & { userId?: string }) {
   const { page, limit, userId, ...filters } = query;
@@ -268,7 +269,72 @@ export async function createMedication(data: MedicationSchema, userTimezone?: nu
     }
   }
 
-  return prisma.medication.create({ data });
+  // Criar medicamento
+  const medication = await prisma.medication.create({ data });
+
+  // Buscar ReminderSettings do usuário para saber quantos minutos antes notificar
+  const reminderSettings = await prisma.reminderSettings.findUnique({
+    where: { userId: data.userId },
+  });
+
+  const reminderBefore = reminderSettings?.reminderBefore || 0; // Padrão: 0 minutos
+
+  // Buscar schedules criados para este medicamento (criados automaticamente via trigger/hook)
+  const schedules = await prisma.medicationSchedule.findMany({
+    where: { medicationId: medication.id },
+  });
+
+  // Criar ScheduledNotification para cada schedule DE HOJE
+  const timezoneOffset = userTimezone !== undefined ? userTimezone : new Date().getTimezoneOffset();
+  const userNow = addMinutes(new Date(), timezoneOffset);
+  const todayStart = new Date(userNow.getFullYear(), userNow.getMonth(), userNow.getDate());
+  const todayEnd = new Date(
+    userNow.getFullYear(),
+    userNow.getMonth(),
+    userNow.getDate(),
+    23,
+    59,
+    59
+  );
+
+  for (const schedule of schedules) {
+    const [hours, minutes] = schedule.time.split(':').map(Number);
+
+    // scheduledTime em UTC (hora LOCAL do usuário convertida)
+    const scheduledTimeLocal = new Date(userNow);
+    scheduledTimeLocal.setHours(hours, minutes, 0, 0);
+
+    // Converter LOCAL → UTC
+    const scheduledTimeUTC = addMinutes(scheduledTimeLocal, -timezoneOffset);
+
+    // Verificar se é de hoje
+    if (scheduledTimeLocal < todayStart || scheduledTimeLocal > todayEnd) {
+      continue;
+    }
+
+    // Calcular horário da notificação: scheduledTime - reminderBefore
+    const notificationTime = addMinutes(scheduledTimeUTC, -reminderBefore);
+
+    // Não criar notificação se o horário já passou
+    if (notificationTime < new Date()) {
+      continue;
+    }
+
+    // Criar ScheduledNotification no banco
+    await prisma.scheduledNotification.create({
+      data: {
+        medicationId: medication.id,
+        scheduleId: schedule.id,
+        userId: medication.userId,
+        medicationName: medication.name,
+        dosage: medication.dosage,
+        scheduledTime: notificationTime, // Horário da notificação (scheduledTime - reminderBefore)
+        status: 'PENDING',
+      },
+    });
+  }
+
+  return medication;
 }
 
 export async function updateMedication(id: string, data: Partial<MedicationSchema>) {
@@ -327,19 +393,25 @@ export async function updateMedication(id: string, data: Partial<MedicationSchem
 }
 
 export async function deleteMedication(id: string) {
-  await prisma.medicationSchedule.deleteMany({
+  // Deletar schedules relacionados
+  const deletedSchedules = await prisma.medicationSchedule.deleteMany({
     where: { medicationId: id },
   });
 
-  await prisma.medicationHistory.deleteMany({
+  // Deletar histórico relacionado
+  const deletedHistory = await prisma.medicationHistory.deleteMany({
     where: { medicationId: id },
   });
 
-  await prisma.scheduledNotification.deleteMany({
+  // Deletar notificações agendadas relacionadas
+  const deletedNotifications = await prisma.scheduledNotification.deleteMany({
     where: { medicationId: id },
   });
 
-  return prisma.medication.delete({
+  // Deletar o medicamento
+  const deletedMedication = await prisma.medication.delete({
     where: { id },
   });
+
+  return deletedMedication;
 }

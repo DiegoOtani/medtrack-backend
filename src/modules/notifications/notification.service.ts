@@ -1,4 +1,5 @@
 import { Expo, ExpoPushMessage, ExpoPushToken, ExpoPushSuccessTicket } from 'expo-server-sdk';
+import { addMinutes } from 'date-fns';
 import prisma from '../../shared/lib/prisma';
 
 export class NotificationService {
@@ -44,30 +45,34 @@ export class NotificationService {
     userId: string,
     medicationId: string,
     scheduleId: string,
-    scheduledTime: Date,
+    scheduledTime: Date, // Horário do medicamento
     medicationName: string,
     dosage: string
   ) {
-    // Busca tokens de dispositivos do usuário
-    const deviceTokens = await prisma.deviceToken.findMany({
-      where: { userId },
-    });
-
     // Busca configurações de lembrete do usuário
     const reminderSettings = await prisma.reminderSettings.findUnique({
       where: { userId },
     });
 
-    if (deviceTokens.length === 0) {
-      throw new Error('Usuário não possui dispositivos registrados para notificações');
+    const reminderBefore = reminderSettings?.reminderBefore || 0; // minutos antes
+
+    // Calcula horário da notificação: scheduledTime - reminderBefore
+    let notificationTime = scheduledTime;
+    if (reminderBefore > 0) {
+      notificationTime = addMinutes(scheduledTime, -reminderBefore);
+    }
+
+    // Não agendar se o horário da notificação já passou
+    if (notificationTime < new Date()) {
+      return null;
     }
 
     // Calcula horário de silêncio se configurado
-    const isQuietHour = this.isQuietHour(scheduledTime, reminderSettings);
+    const isQuietHour = this.isQuietHour(notificationTime, reminderSettings);
 
     if (isQuietHour && reminderSettings?.enablePush) {
       // Se está no horário de silêncio, agenda para o próximo horário disponível
-      scheduledTime = this.adjustForQuietHours(scheduledTime, reminderSettings);
+      notificationTime = this.adjustForQuietHours(notificationTime, reminderSettings);
     }
 
     // Cria notificação agendada no banco
@@ -78,21 +83,14 @@ export class NotificationService {
         userId,
         medicationName,
         dosage,
-        scheduledTime,
+        scheduledTime: notificationTime, // Horário da NOTIFICAÇÃO (scheduledTime - reminderBefore)
         status: 'scheduled',
       },
     });
 
-    // Se push notifications estão habilitadas e não é horário de silêncio, envia imediatamente
-    if (reminderSettings?.enablePush && !isQuietHour) {
-      await this.sendPushNotification(
-        deviceTokens,
-        medicationName,
-        dosage,
-        scheduledTime,
-        scheduledNotification.id
-      );
-    }
+    // 🔔 NÃO ENVIAR PUSH NOTIFICATION IMEDIATAMENTE!
+    // Push notifications devem ser enviadas por um job worker quando chegarem no horário
+    // Por enquanto, apenas salvamos no banco e o frontend agenda localmente
 
     return scheduledNotification;
   }
