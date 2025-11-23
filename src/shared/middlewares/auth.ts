@@ -1,24 +1,46 @@
-import { Request, Response, NextFunction } from "express";
-import { verifyToken } from "../utils/jwt";
+import { Request, Response, NextFunction } from 'express';
+import { verifyToken } from '../utils/jwt';
+import { getUserById } from '../../modules/users/user.service';
 
-
-export const authenticateToken = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
-
-  if (!token) {
-    return res.status(401).json({ error: "Token de acesso necessário" });
-  }
-
+/**
+ * Middleware de autenticação JWT
+ */
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Extrai token do header Authorization
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({ error: 'Token de autenticação não fornecido' });
+    }
+
+    // Verifica se o header tem o formato "Bearer <token>"
+    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader;
+
+    if (!token) {
+      return res.status(401).json({ error: 'Token de autenticação não fornecido' });
+    }
+
+    // Verifica e decodifica o token
     const decoded = verifyToken(token);
-    req.user = decoded;
+
+    if (!decoded) {
+      return res.status(401).json({ error: 'Token inválido ou expirado' });
+    }
+
+    // Busca usuário completo
+    const user = await getUserById(decoded.userId);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Adiciona usuário na requisição
+    (req as any).user = user;
+
     next();
   } catch (error) {
-    return res.status(403).json({ error: "Token inválido" });
+    console.error('Erro no middleware de autenticação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 };

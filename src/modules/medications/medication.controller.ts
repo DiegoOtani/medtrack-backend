@@ -5,8 +5,13 @@ import {
   getMedications,
   getMedicationsById,
   deleteMedication,
+  getTodayMedications,
+  updateMedicationStock,
+  getLowStockMedications,
+  getOutOfStockMedications,
 } from './medication.service';
 import { createMedicationSchedules } from '../schedules/schedules.service';
+import { AutoSchedulerService } from '../schedules/auto-scheduler.service';
 import {
   medicationQuerySchema,
   medicationSchema,
@@ -131,22 +136,30 @@ export const createMedicationHandler: RequestHandler = async (
   _next: NextFunction
 ) => {
   try {
-    const userId = req.user?.userId;
-    // const mockUserId = '550e8400-e29b-41d4-a716-446655440000';
+    const userId = req.user?.id;
     const data = medicationSchema.parse({ ...req.body, userId });
 
-    // if (!userId) {
-    //   return res.status(401).json({ error: "Usuário não autenticado" });
-    // }
+    // Extrair timezone do usuário (mesma lógica de getTodayMedications)
+    const timezoneOffset = req.query.timezone
+      ? parseInt(req.query.timezone as string)
+      : req.headers['x-timezone-offset']
+        ? parseInt(req.headers['x-timezone-offset'] as string)
+        : undefined;
 
-    // Cria o medicamento associando ao userId
-    const medication = await createMedication({ ...data, userId });
+    const medication = await createMedication({ ...data, userId }, timezoneOffset);
     const schedules = await createMedicationSchedules(
       medication.id,
       medication.frequency,
       medication.startTime,
       medication.intervalHours
     );
+
+    try {
+      const autoScheduler = new AutoSchedulerService();
+      await autoScheduler.scheduleMedicationNotifications(medication.id);
+    } catch (schedulerError) {
+      console.error('Erro ao agendar notificações automaticamente:', schedulerError);
+    }
 
     res.status(201).json({
       message: 'Medicamento criado com sucesso',
@@ -165,7 +178,7 @@ export const createMedicationHandler: RequestHandler = async (
       });
     }
     return res.status(400).json({
-      error: error.errors || 'Erro ao criar medicamento',
+      error: error.message || 'Erro ao criar medicamento',
     });
   }
 };
@@ -330,9 +343,28 @@ export const getMedicationsHandler: RequestHandler = async (
   _next: NextFunction
 ) => {
   try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
     const query = medicationQuerySchema.partial().parse(req.query);
-    const medications = await getMedications(query);
-    res.json(medications);
+    const medications = await getMedications({ ...query, userId });
+
+    const response = {
+      success: true,
+      data: medications,
+      message: 'Medicamentos recuperados com sucesso',
+    };
+
+    res.json(response);
   } catch (error: any) {
     if (error instanceof ZodError) {
       return res.status(400).json({
@@ -344,6 +376,7 @@ export const getMedicationsHandler: RequestHandler = async (
         })),
       });
     }
+
     return res.status(500).json({
       error: 'Erro ao buscar medicamentos',
     });
@@ -432,16 +465,52 @@ export const getMedicationByIdHandler: RequestHandler = async (
 ) => {
   try {
     const { id } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
     const medication = await getMedicationsById(id);
 
     if (!medication) {
-      return res.status(404).json({ error: 'Medicamento não encontrado' });
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Medicamento não encontrado',
+        },
+      });
     }
 
-    return res.json(medication);
+    if (medication.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Você não tem permissão para acessar este medicamento',
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: medication,
+      message: 'Medicamento encontrado com sucesso',
+    });
   } catch (error: any) {
     return res.status(500).json({
-      error: 'Erro ao buscar medicamento',
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Erro ao buscar medicamento',
+      },
     });
   }
 };
@@ -561,10 +630,69 @@ export const updateMedicationHandler: RequestHandler = async (
 ) => {
   try {
     const { id } = req.params;
-    const data = partialMedicationSchema.parse(req.body);
+    const userId = req.user?.id;
+    const rawData = req.body;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const data = partialMedicationSchema.parse(rawData);
+
+    if (data.expiresAt && data.expiresAt <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Erro de validação',
+        details: [
+          {
+            field: 'expiresAt',
+            message: 'Data de validade deve ser futura',
+          },
+        ],
+      });
+    }
+
+    const existingMedication = await getMedicationsById(id);
+    if (!existingMedication) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Medicamento não encontrado',
+        },
+      });
+    }
+
+    if (existingMedication.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Você não tem permissão para atualizar este medicamento',
+        },
+      });
+    }
 
     const medication = await updateMedication(id, data);
+
+    const relevantFieldsChanged = data.frequency || data.startTime || data.intervalHours;
+    if (relevantFieldsChanged) {
+      try {
+        const autoScheduler = new AutoSchedulerService();
+        await autoScheduler.rescheduleMedicationNotifications(medication.id);
+      } catch (schedulerError) {
+        console.error('[UpdateMedication] Erro ao reagendar notificações:', schedulerError);
+      }
+    }
+
     res.json({
+      success: true,
       message: 'Medicamento atualizado com sucesso',
       medication,
     });
@@ -579,8 +707,12 @@ export const updateMedicationHandler: RequestHandler = async (
         })),
       });
     }
-    return res.status(400).json({
-      error: error.errors || 'Erro ao atualizar medicamento',
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.errors || 'Erro ao atualizar medicamento',
+      },
     });
   }
 };
@@ -659,11 +791,492 @@ export const deleteMedicationHandler: RequestHandler = async (
 ) => {
   try {
     const { id } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const medication = await getMedicationsById(id);
+    if (!medication) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Medicamento não encontrado',
+        },
+      });
+    }
+
+    if (medication.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Você não tem permissão para deletar este medicamento',
+        },
+      });
+    }
+
     await deleteMedication(id);
-    return res.json({ message: 'Medicamento deletado com sucesso' });
+
+    return res.json({
+      success: true,
+      message: 'Medicamento deletado com sucesso',
+    });
   } catch (error: any) {
-    return res.status(400).json({
-      error: 'Erro ao deletar medicamento',
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Erro ao deletar medicamento',
+      },
+    });
+  }
+};
+
+/**
+ * Handles the request to get today's medications for the authenticated user.
+ *
+ * @param {RequestHandler} req - Express request object
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with today's medications
+ *
+ * @throws {401} When user is not authenticated
+ * @throws {500} When an internal server error occurs
+ */
+/**
+ * @openapi
+ * /api/medications/today:
+ *   get:
+ *     tags:
+ *       - Medications
+ *     summary: Busca medicamentos programados para hoje
+ *     description: |
+ *       Retorna todos os medicamentos do usuário que estão programados para serem tomados hoje,
+ *       incluindo os horários de administração e status de cada dose.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Medicamentos de hoje retornados com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       name:
+ *                         type: string
+ *                       dosage:
+ *                         type: string
+ *                       schedules:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             id:
+ *                               type: string
+ *                               format: uuid
+ *                             time:
+ *                               type: string
+ *                               example: "08:00"
+ *                             taken:
+ *                               type: boolean
+ *                 message:
+ *                   type: string
+ *                   example: "Medicamentos de hoje recuperados com sucesso"
+ *       401:
+ *         description: Usuário não autenticado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+export const getTodayMedicationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    // Get timezone offset from query param or header
+    // Expected: offset in minutes (e.g., -180 for UTC-3, 0 for UTC)
+    const timezoneOffset = req.query.timezone
+      ? parseInt(req.query.timezone as string)
+      : req.headers['x-timezone-offset']
+        ? parseInt(req.headers['x-timezone-offset'] as string)
+        : undefined;
+
+    const medications = await getTodayMedications(userId, timezoneOffset);
+
+    res.json({
+      success: true,
+      data: medications,
+      message: 'Medicamentos de hoje recuperados com sucesso',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Erro ao buscar medicamentos de hoje',
+      },
+    });
+  }
+};
+
+/**
+ * Handles the request to update medication stock.
+ *
+ * @param {RequestHandler} req - Express request object containing medication ID and new stock
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with the updated medication
+ *
+ * @throws {400} When validation fails
+ * @throws {404} When medication is not found
+ */
+/**
+ * @openapi
+ * /api/medications/{id}/stock:
+ *   put:
+ *     tags:
+ *       - Medications
+ *     summary: Atualiza apenas o estoque de um medicamento
+ *     description: |
+ *       Atualiza a quantidade em estoque de um medicamento específico.
+ *       Útil para reabastecer medicamentos sem alterar outras informações.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID do medicamento
+ *         example: "550e8400-e29b-41d4-a716-446655440000"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - stock
+ *             properties:
+ *               stock:
+ *                 type: integer
+ *                 minimum: 0
+ *                 description: Nova quantidade em estoque
+ *                 example: 30
+ *     responses:
+ *       200:
+ *         description: Estoque atualizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Estoque atualizado com sucesso"
+ *                 medication:
+ *                   $ref: '#/components/schemas/MedicationResponse'
+ *       400:
+ *         description: Erro de validação (estoque inválido)
+ *       401:
+ *         description: Usuário não autenticado
+ *       403:
+ *         description: Sem permissão para atualizar este medicamento
+ *       404:
+ *         description: Medicamento não encontrado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+export const updateMedicationStockHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { stock } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    if (typeof stock !== 'number' || stock < 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Estoque deve ser um número não negativo',
+        },
+      });
+    }
+
+    const existingMedication = await getMedicationsById(id);
+    if (!existingMedication) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Medicamento não encontrado',
+        },
+      });
+    }
+
+    if (existingMedication.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Você não tem permissão para atualizar este medicamento',
+        },
+      });
+    }
+
+    const medication = await updateMedicationStock(id, stock);
+
+    res.json({
+      success: true,
+      message: 'Estoque atualizado com sucesso',
+      medication,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Erro ao atualizar estoque',
+      },
+    });
+  }
+};
+
+/**
+ * Handles the request to get medications with low stock.
+ *
+ * @param {RequestHandler} req - Express request object with optional threshold parameter
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with low stock medications
+ *
+ * @throws {401} When user is not authenticated
+ */
+/**
+ * @openapi
+ * /api/medications/stock/low:
+ *   get:
+ *     tags:
+ *       - Medications
+ *     summary: Busca medicamentos com estoque baixo
+ *     description: |
+ *       Retorna lista de medicamentos do usuário que estão com estoque abaixo do limite especificado.
+ *       Útil para alertar o usuário sobre necessidade de reabastecimento.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: threshold
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 5
+ *         description: Limite de estoque baixo (padrão 5 unidades)
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Medicamentos com estoque baixo retornados com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MedicationResponse'
+ *                 message:
+ *                   type: string
+ *                   example: "Medicamentos com estoque baixo recuperados com sucesso"
+ *             example:
+ *               success: true
+ *               data:
+ *                 - id: "550e8400-e29b-41d4-a716-446655440000"
+ *                   name: "Paracetamol"
+ *                   dosage: "500mg"
+ *                   stock: 3
+ *                   frequency: "TWICE_A_DAY"
+ *               message: "Medicamentos com estoque baixo recuperados com sucesso"
+ *       401:
+ *         description: Usuário não autenticado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+export const getLowStockMedicationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const threshold = req.query.threshold ? parseInt(req.query.threshold as string) : 5;
+    const medications = await getLowStockMedications(userId, threshold);
+
+    res.json({
+      success: true,
+      data: medications,
+      message: 'Medicamentos com estoque baixo recuperados com sucesso',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Erro ao buscar medicamentos com estoque baixo',
+      },
+    });
+  }
+};
+
+/**
+ * Handles the request to get medications that are out of stock.
+ *
+ * @param {RequestHandler} req - Express request object
+ * @param {Response} res - Express response object
+ * @param {NextFunction} _next - Express next function (not used here)
+ * @returns {Promise<void>} Returns a JSON response with out of stock medications
+ *
+ * @throws {401} When user is not authenticated
+ */
+/**
+ * @openapi
+ * /api/medications/stock/out:
+ *   get:
+ *     tags:
+ *       - Medications
+ *     summary: Busca medicamentos sem estoque
+ *     description: |
+ *       Retorna lista de medicamentos do usuário que estão completamente sem estoque (stock = 0).
+ *       Alerta crítico para o usuário reabastecer medicamentos essenciais.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Medicamentos sem estoque retornados com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/MedicationResponse'
+ *                 message:
+ *                   type: string
+ *                   example: "Medicamentos sem estoque recuperados com sucesso"
+ *             example:
+ *               success: true
+ *               data:
+ *                 - id: "550e8400-e29b-41d4-a716-446655440000"
+ *                   name: "Ibuprofeno"
+ *                   dosage: "600mg"
+ *                   stock: 0
+ *                   frequency: "THREE_TIMES_A_DAY"
+ *               message: "Medicamentos sem estoque recuperados com sucesso"
+ *       401:
+ *         description: Usuário não autenticado
+ *       500:
+ *         description: Erro interno do servidor
+ */
+export const getOutOfStockMedicationsHandler: RequestHandler = async (
+  req: Request,
+  res: Response,
+  _next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const medications = await getOutOfStockMedications(userId);
+
+    res.json({
+      success: true,
+      data: medications,
+      message: 'Medicamentos sem estoque recuperados com sucesso',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Erro ao buscar medicamentos sem estoque',
+      },
     });
   }
 };

@@ -1,7 +1,11 @@
 declare global {
   namespace Express {
     interface Request {
-      user: Partial<User>;
+      user: {
+        id: string;
+        name: string;
+        email: string;
+      };
     }
   }
 }

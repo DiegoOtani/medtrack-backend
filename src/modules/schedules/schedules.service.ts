@@ -1,10 +1,7 @@
 import { Frequency, Prisma } from '@prisma/client';
 import scheduleHandlers from './handler';
 import prisma from '../../shared/lib/prisma';
-import {
-  CreateCustomScheduleInput,
-  UpdateScheduleInput,
-} from './schedules.schemas';
+import { CreateCustomScheduleInput, UpdateScheduleInput } from './schedules.schemas';
 
 /**
  * Creates the schedules for a medication
@@ -26,12 +23,14 @@ export const createMedicationSchedules = async (
     return { count: 0, message: 'Nenhum agendamento criado' };
   }
 
+  const dataToInsert = schedules.map((schedule) => ({
+    medicationId,
+    time: schedule.time,
+    daysOfWeek: schedule.daysOfWeek,
+  }));
+
   const createdSchedules = await prisma.medicationSchedule.createMany({
-    data: schedules.map((schedule) => ({
-      medicationId,
-      time: schedule.time,
-      daysOfWeek: schedule.daysOfWeek,
-    })),
+    data: dataToInsert,
   });
 
   if (createdSchedules.count !== schedules.length) {
@@ -44,10 +43,7 @@ export const createMedicationSchedules = async (
 /**
  * Gets all schedules for a medication
  */
-export const getSchedulesByMedication = async (
-  medicationId: string,
-  isActive?: boolean
-) => {
+export const getSchedulesByMedication = async (medicationId: string, isActive?: boolean) => {
   const where: Prisma.MedicationScheduleWhereInput = {
     medicationId,
   };
@@ -78,10 +74,7 @@ export const getSchedulesByMedication = async (
 /**
  * Gets all active schedules for a user's medications
  */
-export const getSchedulesByUser = async (
-  userId: string,
-  isActive?: boolean
-) => {
+export const getSchedulesByUser = async (userId: string, isActive?: boolean) => {
   const where: Prisma.MedicationScheduleWhereInput = {
     medication: {
       userId,
@@ -181,10 +174,7 @@ export const createCustomSchedule = async (data: CreateCustomScheduleInput) => {
 /**
  * Updates a schedule
  */
-export const updateSchedule = async (
-  id: string,
-  data: UpdateScheduleInput['body']
-) => {
+export const updateSchedule = async (id: string, data: UpdateScheduleInput['body']) => {
   const schedule = await prisma.medicationSchedule.findUnique({
     where: { id },
   });

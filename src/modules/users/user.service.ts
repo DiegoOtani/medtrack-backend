@@ -1,14 +1,14 @@
-import prisma from "../../shared/lib/prisma";
-import { UserSchema, UserQuery, LoginSchema } from "./user.schema";
-import bcrypt from "bcrypt";
-import { generateToken } from "../../shared/utils/jwt";
+import prisma from '../../shared/lib/prisma';
+import { UserSchema, UserQuery, LoginSchema } from './user.schema';
+import bcrypt from 'bcrypt';
+import { generateToken } from '../../shared/utils/jwt';
 
 export async function getUsers(query: UserQuery) {
-  const { page, limit, orderBy = "createdAt", order = "asc", ...filters } = query;
+  const { page, limit, orderBy = 'createdAt', order = 'asc', ...filters } = query;
 
   const where: any = {};
-  if (filters.name) where.name = { contains: filters.name, mode: "insensitive" };
-  if (filters.email) where.email = { contains: filters.email, mode: "insensitive" };
+  if (filters.name) where.name = { contains: filters.name, mode: 'insensitive' };
+  if (filters.email) where.email = { contains: filters.email, mode: 'insensitive' };
 
   const take = limit ?? undefined;
   const skip = page && limit ? (page - 1) * limit : undefined;
@@ -35,25 +35,29 @@ export async function getUserById(id: string) {
   return prisma.user.findUnique({ where: { id } });
 }
 
+export async function getUserByEmail(email: string) {
+  return prisma.user.findUnique({ where: { email } });
+}
+
 export async function createUser(data: UserSchema) {
   const { password, ...userData } = data;
   const hashedPassword = await bcrypt.hash(password, 10);
-  
-  return prisma.user.create({ 
-    data: { 
-      ...userData, 
-      password: hashedPassword 
-    } 
+
+  return prisma.user.create({
+    data: {
+      ...userData,
+      password: hashedPassword,
+    },
   });
 }
 
 export async function updateUser(id: string, data: Partial<UserSchema>) {
   const updateData: any = { ...data };
-  
+
   if (data.password) {
     updateData.password = await bcrypt.hash(data.password, 10);
   }
-  
+
   return prisma.user.update({
     where: { id },
     data: updateData,
@@ -72,13 +76,13 @@ export async function loginUser(data: LoginSchema) {
   });
 
   if (!user) {
-    throw new Error("Credenciais inválidas");
+    throw new Error('Credenciais inválidas');
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.password);
 
   if (!isPasswordValid) {
-    throw new Error("Credenciais inválidas");
+    throw new Error('Credenciais inválidas');
   }
 
   const token = generateToken({

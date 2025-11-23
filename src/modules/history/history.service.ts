@@ -1,16 +1,37 @@
 import { HistoryAction, Prisma } from '@prisma/client';
 import prisma from '../../shared/lib/prisma';
 import { CreateHistoryInput } from './history.schemas';
+import { addMinutes } from 'date-fns';
 
 /**
  * Creates a new medication history entry
  */
 export const createHistory = async (data: CreateHistoryInput) => {
-  const { medicationId, scheduleId, scheduledFor, action, quantity, notes } =
-    data;
+  const { medicationId, scheduleId, scheduledFor, action, quantity, notes } = data;
+
+  let finalMedicationId = medicationId;
+
+  // Se não foi fornecido medicationId mas foi fornecido scheduleId,
+  // buscar o medicationId através do scheduleId
+  if (!medicationId && scheduleId) {
+    const schedule = await prisma.medicationSchedule.findUnique({
+      where: { id: scheduleId },
+      select: { medicationId: true },
+    });
+
+    if (!schedule) {
+      throw new Error('Agendamento não encontrado');
+    }
+
+    finalMedicationId = schedule.medicationId;
+  }
+
+  if (!finalMedicationId) {
+    throw new Error('ID do medicamento é obrigatório');
+  }
 
   const medication = await prisma.medication.findUnique({
-    where: { id: medicationId },
+    where: { id: finalMedicationId },
   });
 
   if (!medication) {
@@ -19,9 +40,9 @@ export const createHistory = async (data: CreateHistoryInput) => {
 
   const history = await prisma.medicationHistory.create({
     data: {
-      medicationId,
+      medicationId: finalMedicationId,
       scheduleId,
-      scheduledFor: scheduledFor ? new Date(scheduledFor) : undefined,
+      scheduledFor: scheduledFor ? new Date(scheduledFor as string) : undefined,
       action,
       quantity,
       notes,
@@ -37,12 +58,26 @@ export const createHistory = async (data: CreateHistoryInput) => {
     },
   });
 
-  if (
-    (action === HistoryAction.TAKEN || action === HistoryAction.DISCARDED) &&
-    quantity
-  ) {
+  // Se a ação for POSTPONED, atualizar o scheduledTime da notificação
+  if (action === HistoryAction.POSTPONED && scheduleId && scheduledFor) {
+    const newScheduledTime = new Date(scheduledFor as string);
+
+    await prisma.scheduledNotification.updateMany({
+      where: {
+        scheduleId: scheduleId,
+        status: 'scheduled', // Só atualiza se ainda estiver agendada
+      },
+      data: {
+        scheduledTime: newScheduledTime,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  // Só decrementa estoque se a ação for TAKEN e quantity estiver definida
+  if (action === HistoryAction.TAKEN && quantity) {
     await prisma.medication.update({
-      where: { id: medicationId },
+      where: { id: finalMedicationId },
       data: {
         stock: {
           decrement: quantity,
@@ -51,7 +86,7 @@ export const createHistory = async (data: CreateHistoryInput) => {
     });
   } else if (action === HistoryAction.RESTOCKED && quantity) {
     await prisma.medication.update({
-      where: { id: medicationId },
+      where: { id: finalMedicationId },
       data: {
         stock: {
           increment: quantity,
@@ -75,7 +110,7 @@ export const getHistoryByMedication = async (
     limit?: number;
   }
 ) => {
-  const where: Prisma.MedicationHistoryWhereInput = {
+  const where: any = {
     medicationId,
   };
 
@@ -125,7 +160,7 @@ export const getHistoryByUser = async (
     limit?: number;
   }
 ) => {
-  const where: Prisma.MedicationHistoryWhereInput = {
+  const where: any = {
     medication: {
       userId,
     },
@@ -217,7 +252,7 @@ export const getAdherenceStats = async (
   startDate?: string,
   endDate?: string
 ) => {
-  const where: Prisma.MedicationHistoryWhereInput = {
+  const where: any = {
     medicationId,
     action: {
       in: [HistoryAction.TAKEN, HistoryAction.SKIPPED, HistoryAction.MISSED],
@@ -242,13 +277,9 @@ export const getAdherenceStats = async (
   });
 
   const total = history.length;
-  const taken = history.filter((h) => h.action === HistoryAction.TAKEN).length;
-  const skipped = history.filter(
-    (h) => h.action === HistoryAction.SKIPPED
-  ).length;
-  const missed = history.filter(
-    (h) => h.action === HistoryAction.MISSED
-  ).length;
+  const taken = history.filter((h: any) => h.action === HistoryAction.TAKEN).length;
+  const skipped = history.filter((h: any) => h.action === HistoryAction.SKIPPED).length;
+  const missed = history.filter((h: any) => h.action === HistoryAction.MISSED).length;
 
   return {
     total,

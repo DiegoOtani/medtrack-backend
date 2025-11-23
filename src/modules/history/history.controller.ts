@@ -91,6 +91,159 @@ import * as historyService from './history.service';
 import { CreateHistoryInput } from './history.schemas';
 
 /**
+ * Interface for history item returned by Prisma with medication relation
+ */
+interface HistoryWithMedication {
+  id: string;
+  medicationId: string;
+  scheduleId: string | null;
+  scheduledFor: Date | null;
+  action: string;
+  quantity: number | null;
+  notes: string | null;
+  createdAt: Date;
+  medication: {
+    id: string;
+    name: string;
+    dosage: string;
+  } | null;
+}
+
+/**
+ * @openapi
+ * /api/history/me:
+ *   get:
+ *     tags:
+ *       - History
+ *     summary: Busca histórico do usuário autenticado
+ *     description: |
+ *       Retorna o histórico de medicamentos do usuário atualmente autenticado.
+ *       Permite filtrar por período (startDate e endDate) e retorna dados formatados para o frontend.
+ *       Inclui informações sobre medicamentos tomados, adiados, pulados ou perdidos.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Data de início do período (ISO 8601)
+ *         example: "2025-11-01T00:00:00.000Z"
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Data de fim do período (ISO 8601)
+ *         example: "2025-11-30T23:59:59.999Z"
+ *     responses:
+ *       200:
+ *         description: Histórico retornado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         format: uuid
+ *                       scheduleId:
+ *                         type: string
+ *                         format: uuid
+ *                       medicationName:
+ *                         type: string
+ *                         example: "Paracetamol"
+ *                       dosage:
+ *                         type: string
+ *                         example: "500mg"
+ *                       scheduledTime:
+ *                         type: string
+ *                         format: date-time
+ *                       status:
+ *                         type: string
+ *                         enum: [taken, postponed, skipped, missed]
+ *                         description: Status mapeado da ação
+ *                       confirmedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Quando foi confirmado (apenas se status=taken)
+ *                       postponedTo:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Para quando foi adiado (apenas se status=postponed)
+ *             example:
+ *               success: true
+ *               data:
+ *                 - id: "770e8400-e29b-41d4-a716-446655440002"
+ *                   scheduleId: "660e8400-e29b-41d4-a716-446655440001"
+ *                   medicationName: "Paracetamol"
+ *                   dosage: "500mg"
+ *                   scheduledTime: "2025-11-22T08:00:00.000Z"
+ *                   status: "taken"
+ *                   confirmedAt: "2025-11-22T08:05:00.000Z"
+ *       400:
+ *         description: Erro ao buscar histórico
+ *       401:
+ *         description: Usuário não autenticado
+ */
+export const getHistoryByAuthenticatedUserHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Usuário não autenticado',
+        },
+      });
+    }
+
+    const { startDate, endDate } = req.query;
+
+    const history = await historyService.getHistoryByUser(userId, {
+      startDate: startDate as string,
+      endDate: endDate as string,
+      limit: 100, // Limitar para não sobrecarregar
+    });
+
+    // Mapear dados do Prisma para o formato esperado pelo frontend
+    const formattedHistory = history.map((item: HistoryWithMedication) => ({
+      id: item.id,
+      scheduleId: item.scheduleId || '',
+      medicationName: item.medication?.name || 'Medicamento desconhecido',
+      dosage: item.medication?.dosage || '',
+      scheduledTime:
+        item.scheduledFor?.toISOString() ||
+        item.createdAt?.toISOString() ||
+        new Date().toISOString(),
+      status: mapActionToStatus(item.action),
+      confirmedAt: item.action === 'TAKEN' ? item.createdAt?.toISOString() : undefined,
+      postponedTo: item.action === 'POSTPONED' ? item.scheduledFor?.toISOString() : undefined,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedHistory,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro ao buscar histórico',
+    });
+  }
+};
+
+/**
  * POST /api/history
  * Creates a new medication history entry
  */
@@ -234,10 +387,7 @@ export const createHistoryHandler = async (req: Request, res: Response) => {
  * GET /api/history/medication/:medicationId
  * Gets history entries by medication ID
  */
-export const getHistoryByMedicationHandler = async (
-  req: Request,
-  res: Response
-) => {
+export const getHistoryByMedicationHandler = async (req: Request, res: Response) => {
   try {
     const { medicationId } = req.params;
     const { startDate, endDate, action, limit } = req.query;
@@ -256,8 +406,7 @@ export const getHistoryByMedicationHandler = async (
   } catch (error) {
     return res.status(400).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Erro ao buscar histórico',
+      error: error instanceof Error ? error.message : 'Erro ao buscar histórico',
     });
   }
 };
@@ -489,8 +638,7 @@ export const getHistoryByUserHandler = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(400).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Erro ao buscar histórico',
+      error: error instanceof Error ? error.message : 'Erro ao buscar histórico',
     });
   }
 };
@@ -608,8 +756,7 @@ export const getHistoryByIdHandler = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(404).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Histórico não encontrado',
+      error: error instanceof Error ? error.message : 'Histórico não encontrado',
     });
   }
 };
@@ -709,8 +856,7 @@ export const deleteHistoryHandler = async (req: Request, res: Response) => {
   } catch (error) {
     return res.status(404).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Erro ao excluir histórico',
+      error: error instanceof Error ? error.message : 'Erro ao excluir histórico',
     });
   }
 };
@@ -741,3 +887,21 @@ export const getAdherenceStatsHandler = async (req: Request, res: Response) => {
     });
   }
 };
+
+/**
+ * Helper function to map HistoryAction to status expected by frontend
+ */
+function mapActionToStatus(action: string): 'confirmed' | 'missed' | 'postponed' {
+  switch (action) {
+    case 'TAKEN':
+      return 'confirmed';
+    case 'MISSED':
+      return 'missed';
+    case 'POSTPONED':
+      return 'postponed';
+    case 'SKIPPED':
+      return 'missed';
+    default:
+      return 'missed';
+  }
+}
