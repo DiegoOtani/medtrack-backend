@@ -99,29 +99,25 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
       // Criar scheduledTime considerando o timezone do usuário
       // schedule.time é hora LOCAL do usuário (ex: 19:00 BRT)
       // timezoneOffset = -180 para BRT (UTC-3)
-      
+
       // Para converter hora local para UTC:
       // 19:00 BRT = 19:00 - (-3h) = 19:00 + 3h = 22:00 UTC
       // Portanto, precisamos SUBTRAIR o offset (adicionar o valor negativo)
-      
+
       const year = userDate.getFullYear();
       const month = userDate.getMonth();
       const day = userDate.getDate();
-      
+
       // Criar timestamp em UTC para o horário LOCAL do usuário
       let scheduledTime = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
-      
+
       // Converter de hora local para UTC: subtrair o offset
       // timezoneOffset = -180 (BRT), então subtraímos -180 = adicionamos 180
       scheduledTime = addMinutes(scheduledTime, -timezoneOffset);
 
       // Se foi adiado (POSTPONED), usar o novo horário do histórico
       if (todayHistory?.action === 'POSTPONED' && todayHistory.scheduledFor) {
-        console.log('[GET_TODAY] POSTPONED detectado!');
-        console.log('[GET_TODAY] scheduledTime ANTES:', scheduledTime.toISOString());
-        console.log('[GET_TODAY] todayHistory.scheduledFor:', todayHistory.scheduledFor);
         scheduledTime = new Date(todayHistory.scheduledFor);
-        console.log('[GET_TODAY] scheduledTime DEPOIS:', scheduledTime.toISOString());
       }
 
       const currentUserTime = new Date(userDate);
