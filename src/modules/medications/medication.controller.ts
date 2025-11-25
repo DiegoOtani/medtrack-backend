@@ -11,7 +11,6 @@ import {
   getOutOfStockMedications,
 } from './medication.service';
 import { createMedicationSchedules } from '../schedules/schedules.service';
-import { AutoSchedulerService } from '../schedules/auto-scheduler.service';
 import {
   medicationQuerySchema,
   medicationSchema,
@@ -153,13 +152,6 @@ export const createMedicationHandler: RequestHandler = async (
       medication.startTime,
       medication.intervalHours
     );
-
-    try {
-      const autoScheduler = new AutoSchedulerService();
-      await autoScheduler.scheduleMedicationNotifications(medication.id);
-    } catch (schedulerError) {
-      console.error('Erro ao agendar notificações automaticamente:', schedulerError);
-    }
 
     res.status(201).json({
       message: 'Medicamento criado com sucesso',

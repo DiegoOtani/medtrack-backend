@@ -14,7 +14,7 @@ router.get('/', (req, res) => {
 
 router.use('/medications', authMiddleware, medicationRoutes);
 router.use('/users', userRoutes);
-router.use('/schedules', schedulesRoutes);
+router.use('/schedules', authMiddleware, schedulesRoutes);
 router.use('/history', historyRoutes);
 router.use('/notifications', notificationRoutes);
 

@@ -22,7 +22,6 @@ model User {
   medications      Medication[]
   reminderSettings ReminderSettings?
   deviceTokens     DeviceToken[]
-  scheduledNotifications ScheduledNotification[]
 }
 
 model ReminderSettings {
@@ -121,22 +120,4 @@ model DeviceToken {
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-model ScheduledNotification {
-  id            String     @id @default(uuid()) @map("_id")
-  medicationId  String
-  scheduleId    String
-  userId        String
-  user          User       @relation(fields: [userId], references: [id])
-
-  medicationName String
-  dosage        String
-  scheduledTime DateTime
-
-  notificationId String?    // ID da notificação no Expo
-  status        String     @default("scheduled") // 'scheduled' | 'sent' | 'cancelled'
-
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
 }

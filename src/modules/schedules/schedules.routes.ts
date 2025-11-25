@@ -7,6 +7,7 @@ import {
   updateScheduleHandler,
   toggleScheduleHandler,
   deleteScheduleHandler,
+  getSyncDataHandler,
 } from './schedules.controller';
 import { validate } from '../../shared/middlewares/validate';
 import {
@@ -19,6 +20,14 @@ import {
 } from './schedules.schemas';
 
 const router = Router();
+
+/**
+ * @route   GET /api/schedules/sync
+ * @desc    Get comprehensive data for offline sync
+ * @access  Private
+ * @note    MUST be defined before routes with :id parameters to avoid conflicts
+ */
+router.get('/sync', getSyncDataHandler);
 
 /**
  * @route   GET /api/schedules/medication/:medicationId

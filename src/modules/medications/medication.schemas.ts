@@ -1,17 +1,7 @@
+import { Frequency } from '@prisma/client';
 import { z } from 'zod';
 
-export const frequencyEnum = z.enum([
-  'ONE_TIME',
-  'DAILY',
-  'TWICE_A_DAY',
-  'THREE_TIMES_A_DAY',
-  'FOUR_TIMES_A_DAY',
-  'EVERY_OTHER_DAY',
-  'WEEKLY',
-  'MONTHLY',
-  'AS_NEEDED',
-  'CUSTOM',
-]);
+export const frequencyEnum = z.nativeEnum(Frequency);
 
 export const medicationSchema = z.object({
   name: z.string().min(1, 'Nome do medicamento é obrigatório'),

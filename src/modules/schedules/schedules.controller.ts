@@ -656,6 +656,35 @@ import {
 } from './schedules.schemas';
 
 /**
+ * GET /api/schedules/sync
+ * Gets comprehensive data for frontend to sync and schedule local notifications
+ */
+export const getSyncDataHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Usuário não autenticado'
+      });
+    }
+
+    const syncData = await schedulesService.getSyncData(userId);
+
+    return res.status(200).json({
+      success: true,
+      data: syncData,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro ao sincronizar dados',
+    });
+  }
+};
+
+
+/**
  * GET /api/schedules/medication/:medicationId
  * Gets all schedules for a medication
  */

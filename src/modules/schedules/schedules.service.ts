@@ -2,7 +2,6 @@ import { Frequency, Prisma } from '@prisma/client';
 import scheduleHandlers from './handler';
 import prisma from '../../shared/lib/prisma';
 import { CreateCustomScheduleInput, UpdateScheduleInput } from './schedules.schemas';
-import { medicationNotificationScheduler } from '../medications/medication-notification-scheduler';
 
 /**
  * Creates the schedules for a medication
@@ -95,6 +94,9 @@ export const getSchedulesByUser = async (userId: string, isActive?: boolean) => 
           name: true,
           dosage: true,
           frequency: true,
+          intervalHours: true,
+          startTime: true,
+          expiresAt: true,
         },
       },
     },
@@ -111,6 +113,64 @@ export const getSchedulesByUser = async (userId: string, isActive?: boolean) => 
   });
 
   return schedules;
+};
+
+/**
+ * Gets comprehensive sync data for the frontend to operate offline
+ * This returns schedules + medication rules needed for local notification scheduling
+ */
+export const getSyncData = async (userId: string) => {
+  const schedules = await prisma.medicationSchedule.findMany({
+    where: {
+      isActive: true,
+      medication: {
+        userId,
+      },
+    },
+    select: {
+      id: true,
+      time: true,
+      daysOfWeek: true,
+      medicationId: true,
+      medication: {
+        select: {
+          id: true,
+          name: true,
+          dosage: true,
+          frequency: true,
+          startTime: true,
+          intervalHours: true,
+          expiresAt: true,
+          stock: true,
+        },
+      },
+    },
+  });
+
+  const settings = await prisma.reminderSettings.findUnique({
+    where: { userId },
+  });
+
+  return {
+    timestamp: new Date().toISOString(),
+    schedules: schedules.map(s => ({
+      id: s.id,
+      medicationId: s.medicationId,
+      name: s.medication.name,
+      dosage: s.medication.dosage,
+      frequency: s.medication.frequency,
+      days: s.daysOfWeek,
+      time: s.time,
+      startDate: s.medication.startTime,
+      intervalHours: s.medication.intervalHours,
+      endDate: s.medication.expiresAt,
+      stock: s.medication.stock
+    })),
+    settings: settings || {
+      enablePush: true,
+      reminderBefore: 0
+    }
+  };
 };
 
 /**
@@ -231,9 +291,6 @@ export const toggleSchedule = async (id: string) => {
     },
   });
 
-  // 🔔 REMOVIDO: Backend não gerencia mais notificações locais
-  // Notificações locais são gerenciadas apenas pelo frontend
-
   return updatedSchedule;
 };
 
@@ -248,9 +305,6 @@ export const deleteSchedule = async (id: string) => {
   if (!schedule) {
     throw new Error('Agendamento não encontrado');
   }
-
-  // 🔔 REMOVIDO: Backend não gerencia mais notificações locais
-  // Notificações locais são gerenciadas apenas pelo frontend
 
   await prisma.medicationSchedule.delete({
     where: { id },
@@ -279,10 +333,8 @@ export const recreateSchedules = async (
   startTime?: string,
   intervalHours?: number | null
 ) => {
-  // Delete existing schedules
   await deleteSchedulesByMedication(medicationId);
 
-  // Create new schedules
   const schedules = await createMedicationSchedules(
     medicationId,
     frequency,
