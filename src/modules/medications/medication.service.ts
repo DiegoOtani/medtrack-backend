@@ -40,14 +40,12 @@ export async function getMedications(query: MedicationQuery & { userId?: string 
  * @param userTimezone - User's timezone offset in minutes (e.g., -180 for UTC-3)
  */
 export async function getTodayMedications(userId: string, userTimezone?: number) {
-  // Use user's timezone if provided, otherwise use server timezone
-  const timezoneOffset = userTimezone !== undefined ? userTimezone : new Date().getTimezoneOffset();
+  const timezoneOffset = userTimezone ?? -(new Date().getTimezoneOffset());
 
-  // Create date in user's timezone using date-fns
-  const now = new Date();
-  const userDate = addMinutes(now, timezoneOffset);
+  const nowUTC = new Date();
+  const userDate = addMinutes(nowUTC, timezoneOffset);
 
-  const dayOfWeek = userDate.getDay();
+  const dayOfWeek = userDate.getUTCDay();
   const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
   const dayName = dayNames[dayOfWeek];
 
@@ -70,24 +68,24 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
     },
   });
 
+  const startOfDayUser = new Date(Date.UTC(
+    userDate.getUTCFullYear(),
+    userDate.getUTCMonth(),
+    userDate.getUTCDate(),
+    0, 0, 0,
+  ));
+
+  const startOfDayUTC = addMinutes(startOfDayUser, -timezoneOffset);
+  const endOfDayUTC = addMinutes(startOfDayUTC, 24 * 60 - 1 / 60000);
+
   const todayMedications = await Promise.all(
     schedules.map(async (schedule) => {
-      const startOfDay = new Date(userDate.getFullYear(), userDate.getMonth(), userDate.getDate());
-      const endOfDay = new Date(
-        userDate.getFullYear(),
-        userDate.getMonth(),
-        userDate.getDate(),
-        23,
-        59,
-        59
-      );
-
       const todayHistory = await prisma.medicationHistory.findFirst({
         where: {
           scheduleId: schedule.id,
           createdAt: {
-            gte: startOfDay,
-            lte: endOfDay,
+            gte: startOfDayUTC,
+            lte: endOfDayUTC,
           },
         },
         orderBy: {
@@ -97,41 +95,32 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
 
       const [hours, minutes] = schedule.time.split(':').map(Number);
 
-      // Criar scheduledTime considerando o timezone do usuário
-      // schedule.time é hora LOCAL do usuário (ex: 19:00 BRT)
-      // timezoneOffset = -180 para BRT (UTC-3)
+      const scheduledTimeLocal = new Date(Date.UTC(
+        userDate.getUTCFullYear(),
+        userDate.getUTCMonth(),
+        userDate.getUTCDate(),
+        hours,
+        minutes,
+        0
+      ));
 
-      // Para converter hora local para UTC:
-      // 19:00 BRT = 19:00 - (-3h) = 19:00 + 3h = 22:00 UTC
-      // Portanto, precisamos SUBTRAIR o offset (adicionar o valor negativo)
-
-      const year = userDate.getFullYear();
-      const month = userDate.getMonth();
-      const day = userDate.getDate();
-
-      // Criar timestamp em UTC para o horário LOCAL do usuário
-      let scheduledTime = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
-
-      // Converter de hora local para UTC: subtrair o offset
-      // timezoneOffset = -180 (BRT), então subtraímos -180 = adicionamos 180
-      scheduledTime = addMinutes(scheduledTime, -timezoneOffset);
+      let scheduledTimeUTC = addMinutes(scheduledTimeLocal, -timezoneOffset);
+      console.log(`\n\n[scheduledTimeUTC] - ${scheduledTimeUTC}\n`);
 
       // Se foi adiado (POSTPONED), usar o novo horário do histórico
       if (todayHistory?.action === 'POSTPONED' && todayHistory.scheduledFor) {
-        scheduledTime = new Date(todayHistory.scheduledFor);
+        scheduledTimeUTC = new Date(todayHistory.scheduledFor);
       }
-
-      const currentUserTime = new Date(userDate);
-
-      let status: 'confirmed' | 'pending' | 'missed' | 'postponed' = 'pending';
 
       // Marcar como MISSED apenas se:
       // 1. Já passou do horário
       // 2. Medicamento foi criado antes do horário agendado
       // 3. Não foi tomado/pulado
-      const hasPassed = currentUserTime > scheduledTime;
+      const hasPassed = nowUTC > scheduledTimeUTC;
       const medicationCreatedAt = new Date(schedule.medication.createdAt);
-      const wasScheduledAfterCreation = scheduledTime >= medicationCreatedAt;
+      const wasScheduledAfterCreation = scheduledTimeUTC >= medicationCreatedAt;
+
+      let status: 'confirmed' | 'pending' | 'missed' | 'postponed' = 'pending';
 
       if (todayHistory) {
         // Já tem histórico - usar status do histórico
@@ -152,7 +141,7 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
           data: {
             medicationId: schedule.medicationId,
             scheduleId: schedule.id,
-            scheduledFor: scheduledTime,
+            scheduledFor: scheduledTimeUTC,
             action: 'MISSED',
             notes: 'Dose não tomada no horário programado (registrado automaticamente)',
           },
@@ -168,7 +157,7 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
         postponed: status === 'postponed',
         userId: schedule.medication.userId,
         scheduleId: schedule.id,
-        scheduledTime: scheduledTime.toISOString(),
+        scheduledTime: scheduledTimeUTC.toISOString(),
         status,
         hasPassed, // ✅ NOVO: indicar se já passou
       };

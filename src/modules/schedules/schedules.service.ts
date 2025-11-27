@@ -2,6 +2,7 @@ import { Frequency, Prisma } from '@prisma/client';
 import scheduleHandlers from './handler';
 import prisma from '../../shared/lib/prisma';
 import { CreateCustomScheduleInput, UpdateScheduleInput } from './schedules.schemas';
+import { addMinutes } from 'date-fns';
 
 /**
  * Creates the schedules for a medication
@@ -15,10 +16,19 @@ export const createMedicationSchedules = async (
   medicationId: string,
   frequency: Frequency,
   startTime?: Date,
-  intervalHours?: number | null
+  intervalHours?: number | null,
+  userTimeZone: number = 0
 ) => {
-  const time = `${startTime?.getHours()}:${startTime?.getMinutes()}`
-  const schedules = scheduleHandlers[frequency](time, intervalHours);
+  let timeStr = '';
+
+  if (startTime) {
+    const localDate = addMinutes(startTime, userTimeZone);
+    const hours = localDate.getUTCHours().toString().padStart(2, '0');
+    const minutes = localDate.getUTCMinutes().toString().padStart(2, '0');
+    timeStr = `${hours}:${minutes}`;
+  }
+
+  const schedules = scheduleHandlers[frequency](timeStr, intervalHours);
 
   schedules.forEach((s) =>
     console.log(`\n[createMedicationSchedules] schedule created - Time: ${s.time} - daysOfWeek: ${s.daysOfWeek}`)

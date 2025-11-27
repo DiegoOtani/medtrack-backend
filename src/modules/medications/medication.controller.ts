@@ -151,7 +151,8 @@ export const createMedicationHandler: RequestHandler = async (
       medication.id,
       medication.frequency,
       medication.startTime,
-      medication.intervalHours
+      medication.intervalHours,
+      timezoneOffset,
     );
 
     res.status(201).json({
@@ -623,6 +624,11 @@ export const updateMedicationHandler: RequestHandler = async (
   next: NextFunction
 ) => {
   try {
+    const timezoneOffset = req.query.timezone
+      ? parseInt(req.query.timezone as string)
+      : req.headers['x-timezone-offset']
+        ? parseInt(req.headers['x-timezone-offset'] as string)
+        : undefined;
     const { id } = req.params;
     const userId = req.user?.id;
     const rawData = req.body;
@@ -682,7 +688,8 @@ export const updateMedicationHandler: RequestHandler = async (
       medication.id,
       medication.frequency,
       medication.startTime,
-      medication.intervalHours
+      medication.intervalHours,
+      timezoneOffset,
     );
 
     res.json({
