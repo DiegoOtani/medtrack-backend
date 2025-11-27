@@ -10,7 +10,7 @@ export const medicationSchema = z.object({
   expiresAt: z.union([z.string().transform((str) => new Date(str)), z.date()]),
   stock: z.number().min(0, 'Estoque do medicamento deve ser pelo menos 0'),
   notes: z.string().optional(),
-  startTime: z.string().optional(),
+  startTime: z.coerce.date(),
   intervalHours: z.number().min(0, 'Intervalo de horas deve ser pelo menos 0').optional(),
   userId: z.string().uuid('ID do usuário inválido'),
 });

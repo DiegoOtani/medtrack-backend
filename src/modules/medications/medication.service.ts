@@ -1,7 +1,6 @@
 import prisma from '../../shared/lib/prisma';
 import { MedicationSchema, MedicationQuery } from './medication.schemas';
 import { addMinutes } from 'date-fns';
-import { recreateSchedules } from '../schedules/schedules.service';
 
 export async function getMedications(query: MedicationQuery & { userId?: string }) {
   const { page, limit, userId, ...filters } = query;
@@ -13,6 +12,7 @@ export async function getMedications(query: MedicationQuery & { userId?: string 
   if (filters.expiresAt) where.expiresAt = filters.expiresAt;
   if (filters.stock !== undefined) where.stock = filters.stock;
   if (userId) where.userId = userId;
+  where.deletedAt = { isSet: false }
 
   const take = limit ?? undefined;
   const skip = page && limit ? (page - 1) * limit : undefined;
@@ -55,6 +55,7 @@ export async function getTodayMedications(userId: string, userTimezone?: number)
     where: {
       medication: {
         userId: userId,
+        deletedAt: { isSet: false },
       },
       isActive: true,
       daysOfWeek: {
@@ -214,6 +215,7 @@ export async function getLowStockMedications(userId: string, threshold: number =
         lte: threshold,
         gt: 0, // Excluir medicamentos sem estoque
       },
+      deletedAt: { isSet: false },
     },
     orderBy: {
       stock: 'asc',
@@ -228,6 +230,7 @@ export async function getOutOfStockMedications(userId: string) {
     where: {
       userId: userId,
       stock: 0,
+      deletedAt: { isSet: false },
     },
   });
 
@@ -235,96 +238,48 @@ export async function getOutOfStockMedications(userId: string) {
 }
 
 export async function getMedicationsById(id: string) {
-  return prisma.medication.findUnique({ where: { id } });
+  return prisma.medication.findUnique({ where: { id, deletedAt: { isSet: false } } });
 }
 
 export async function createMedication(data: MedicationSchema, userTimezone?: number) {
-  if (data.startTime) {
-    const now = new Date();
-    const timezoneOffset =
-      userTimezone !== undefined ? userTimezone : new Date().getTimezoneOffset();
-
-    const userNow = addMinutes(now, timezoneOffset);
-
-    const [hours, minutes] = data.startTime.split(':').map(Number);
-
-    const startTimeToday = new Date(userNow);
-    startTimeToday.setHours(hours, minutes, 0, 0);
-
-    if (startTimeToday < userNow) {
-      const horaAtual = userNow.toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-      throw new Error(
-        `O horário de início (${data.startTime}) já passou. ` +
-        `Hora atual: ${horaAtual}. ` +
-        `Por favor, escolha um horário futuro.`
-      );
-    }
-  }
-
   const medication = await prisma.medication.create({ data });
-
   return medication;
 }
 
 export async function updateMedication(id: string, data: Partial<MedicationSchema>) {
-  // Buscar medicamento atual para comparar mudanças
-  const currentMedication = await prisma.medication.findUnique({
-    where: { id },
-    select: {
-      frequency: true,
-      intervalHours: true,
-      startTime: true,
-    },
-  });
-
-  if (!currentMedication) {
-    throw new Error('Medicamento não encontrado');
-  }
-
-  const frequencyChanged = data.frequency && data.frequency !== currentMedication.frequency;
-  const intervalChanged =
-    data.intervalHours && data.intervalHours !== currentMedication.intervalHours;
-  const startTimeChanged = data.startTime && data.startTime !== currentMedication.startTime;
-
-  const needsScheduleRecreation = frequencyChanged || intervalChanged || startTimeChanged;
-
-  if (needsScheduleRecreation) {
-    await prisma.medicationSchedule.deleteMany({
-      where: { medicationId: id },
-    });
-  }
-
-  // Atualizar medicamento
+  console.log(`\n\n[updateMedication] updating with startTime: ${data.startTime}\n`);
   const updatedMedication = await prisma.medication.update({
     where: { id },
     data,
   });
 
-  // Se precisa recriar schedules, criar novos
-  if (needsScheduleRecreation) {
-    // Usar dados novos se fornecidos, senão manter os atuais
-    const finalFrequency = data.frequency || currentMedication.frequency;
-    const finalIntervalHours = data.intervalHours || currentMedication.intervalHours;
-    const finalStartTime = data.startTime || currentMedication.startTime;
-
-    await recreateSchedules(id, finalFrequency, finalStartTime, finalIntervalHours);
+  try {
+    await prisma.medicationSchedule.deleteMany({
+      where: {
+        medicationId: id,
+      }
+    })
+  } catch (error) {
+    console.error(`[updatedMedication] Error: ${error}`);
   }
 
   return updatedMedication;
 }
 
 export async function deleteMedication(id: string) {
-  const deletedSchedules = await prisma.medicationSchedule.deleteMany({
+  console.info(`\n[MedicationService] deleteMedication - deleting medication with id: ${id}`);
+
+  await prisma.medicationSchedule.deleteMany({
     where: { medicationId: id },
   });
 
-  const deletedMedication = await prisma.medication.delete({
+  const medication = await prisma.medication.update({
     where: { id },
-  });
+    data: {
+      deletedAt: new Date(),
+    },
+  })
 
-  return deletedMedication;
+  console.info(`\n[MedicationService] deleteMedication - medication soft deleted: ${id}`);
+  return medication;
 }

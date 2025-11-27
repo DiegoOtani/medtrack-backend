@@ -14,10 +14,15 @@ import { CreateCustomScheduleInput, UpdateScheduleInput } from './schedules.sche
 export const createMedicationSchedules = async (
   medicationId: string,
   frequency: Frequency,
-  startTime?: string,
+  startTime?: Date,
   intervalHours?: number | null
 ) => {
-  const schedules = scheduleHandlers[frequency](startTime, intervalHours);
+  const time = `${startTime?.getHours()}:${startTime?.getMinutes()}`
+  const schedules = scheduleHandlers[frequency](time, intervalHours);
+
+  schedules.forEach((s) =>
+    console.log(`\n[createMedicationSchedules] schedule created - Time: ${s.time} - daysOfWeek: ${s.daysOfWeek}`)
+  );
 
   if (schedules.length === 0) {
     return { count: 0, message: 'Nenhum agendamento criado' };
@@ -36,6 +41,8 @@ export const createMedicationSchedules = async (
   if (createdSchedules.count !== schedules.length) {
     throw new Error('Erro ao criar os agendamentos');
   }
+
+  console.log(`[createMedicationSchedules] schedules successfuly created\n`);
 
   return createdSchedules;
 };
@@ -322,25 +329,4 @@ export const deleteSchedulesByMedication = async (medicationId: string) => {
   });
 
   return result;
-};
-
-/**
- * Recreates schedules for a medication (useful when changing frequency)
- */
-export const recreateSchedules = async (
-  medicationId: string,
-  frequency: Frequency,
-  startTime?: string,
-  intervalHours?: number | null
-) => {
-  await deleteSchedulesByMedication(medicationId);
-
-  const schedules = await createMedicationSchedules(
-    medicationId,
-    frequency,
-    startTime,
-    intervalHours
-  );
-
-  return schedules;
 };

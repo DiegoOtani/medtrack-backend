@@ -50,13 +50,14 @@ function timeCalculator(
  * ONCE A DAY SCHEDULE HANDLER
  */
 function onceADaySchedule(
-  startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+  startTime: string,
   intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
 ): Array<{
   time: Prisma.MedicationScheduleCreateInput['time'];
   daysOfWeek: Prisma.MedicationScheduleCreateInput['daysOfWeek'];
 }> {
   const schedules = [];
+  console.log(`[onceADaySchedule] startTime: ${startTime}`)
   const _startTime = startTime || '08:00';
 
   schedules.push({
@@ -72,7 +73,7 @@ function onceADaySchedule(
  * Cria schedules considerando que doses podem ser no dia seguinte
  */
 function twiceADaySchedule(
-  startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+  startTime: string,
   intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
 ): Array<{
   time: Prisma.MedicationScheduleCreateInput['time'];
@@ -106,7 +107,7 @@ function twiceADaySchedule(
  * Cria schedules considerando que doses podem ser no dia seguinte
  */
 function threeTimesADaySchedule(
-  startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+  startTime: string,
   intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
 ): Array<{
   time: Prisma.MedicationScheduleCreateInput['time'];
@@ -147,7 +148,7 @@ function threeTimesADaySchedule(
  * Cria schedules considerando que doses podem ser no dia seguinte
  */
 function fourTimesADaySchedule(
-  startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+  startTime: string,
   intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
 ): Array<{
   time: Prisma.MedicationScheduleCreateInput['time'];
@@ -198,7 +199,7 @@ function fourTimesADaySchedule(
  * EVERY OTHER DAY SCHEDULE HANDLER
  */
 function everyOtherDaySchedule(
-  startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+  startTime: string,
   intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
 ): Array<{
   time: Prisma.MedicationScheduleCreateInput['time'];
@@ -220,7 +221,7 @@ function everyOtherDaySchedule(
  * WEEKLY SCHEDULE HANDLER
  */
 function weeklySchedule(
-  startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+  startTime: string,
   intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
 ): Array<{
   time: Prisma.MedicationScheduleCreateInput['time'];
@@ -241,7 +242,7 @@ function weeklySchedule(
  * MONTHLY SCHEDULE HANDLER
  */
 function monthlySchedule(
-  startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+  startTime: string,
   intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
 ): Array<{
   time: Prisma.MedicationScheduleCreateInput['time'];
@@ -273,7 +274,7 @@ function asNeededSchedule(
 
 const scheduleHandlers: {
   [key in Frequency]: (
-    startTime: Prisma.MedicationCreateArgs['data']['startTime'],
+    startTime: string,
     intervalHours: Prisma.MedicationCreateArgs['data']['intervalHours']
   ) => Array<{
     time: Prisma.MedicationScheduleCreateInput['time'];

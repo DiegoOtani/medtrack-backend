@@ -1,7 +1,6 @@
 import { HistoryAction, Prisma } from '@prisma/client';
 import prisma from '../../shared/lib/prisma';
 import { CreateHistoryInput } from './history.schemas';
-import { addMinutes } from 'date-fns';
 
 /**
  * Creates a new medication history entry
@@ -57,22 +56,6 @@ export const createHistory = async (data: CreateHistoryInput) => {
       },
     },
   });
-
-  // Se a ação for POSTPONED, atualizar o scheduledTime da notificação
-  if (action === HistoryAction.POSTPONED && scheduleId && scheduledFor) {
-    const newScheduledTime = new Date(scheduledFor as string);
-
-    await prisma.scheduledNotification.updateMany({
-      where: {
-        scheduleId: scheduleId,
-        status: 'scheduled', // Só atualiza se ainda estiver agendada
-      },
-      data: {
-        scheduledTime: newScheduledTime,
-        updatedAt: new Date(),
-      },
-    });
-  }
 
   // Só decrementa estoque se a ação for TAKEN e quantity estiver definida
   if (action === HistoryAction.TAKEN && quantity) {

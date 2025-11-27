@@ -257,6 +257,7 @@ export const createHistoryHandler = async (req: Request, res: Response) => {
       data: history,
     });
   } catch (error) {
+    console.error(`[createHistoryHandler] Error: ${error}`);
     return res.status(400).json({
       success: false,
       error: error instanceof Error ? error.message : 'Erro ao criar histórico',

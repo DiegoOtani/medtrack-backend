@@ -146,6 +146,7 @@ export const createMedicationHandler: RequestHandler = async (
         : undefined;
 
     const medication = await createMedication({ ...data, userId }, timezoneOffset);
+
     const schedules = await createMedicationSchedules(
       medication.id,
       medication.frequency,
@@ -174,6 +175,7 @@ export const createMedicationHandler: RequestHandler = async (
     });
   }
 };
+
 /**
  * Handles the request to get a paginated list of medications with optional filters.
  *
@@ -635,7 +637,11 @@ export const updateMedicationHandler: RequestHandler = async (
       });
     }
 
+    console.log(`[updateMedicationHandler] data - ${JSON.stringify(rawData)}`);
     const data = partialMedicationSchema.parse(rawData);
+
+    console.log(`\n[updateMedicationHandler] expiresAt: ${data.expiresAt}`)
+    console.log(`[updateMedicationHandler] newDate: ${new Date()}\n`);
 
     if (data.expiresAt && data.expiresAt <= new Date()) {
       return res.status(400).json({
@@ -672,16 +678,12 @@ export const updateMedicationHandler: RequestHandler = async (
     }
 
     const medication = await updateMedication(id, data);
-
-    const relevantFieldsChanged = data.frequency || data.startTime || data.intervalHours;
-    if (relevantFieldsChanged) {
-      try {
-        const autoScheduler = new AutoSchedulerService();
-        await autoScheduler.rescheduleMedicationNotifications(medication.id);
-      } catch (schedulerError) {
-        console.error('[UpdateMedication] Erro ao reagendar notificações:', schedulerError);
-      }
-    }
+    await createMedicationSchedules(
+      medication.id,
+      medication.frequency,
+      medication.startTime,
+      medication.intervalHours
+    );
 
     res.json({
       success: true,
